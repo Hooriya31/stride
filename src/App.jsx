@@ -1,12 +1,32 @@
 import OpportunityCard from './OpportunityCard'
-import opportunities from './data'
-import { useState, useRef } from 'react'
+import { supabase } from './supabase'
+import { useState, useRef, useEffect } from 'react'
 
 function App() {
-  const [selected, setSelected] = useState("All")
-  const [search, setSearch] = useState("")
-  const [openFaq, setOpenFaq] = useState(null)
-  const resultsRef = useRef(null)
+const [opportunities, setOpportunities] = useState([])
+const [loading, setLoading] = useState(true)
+const [selected, setSelected] = useState("All")
+const [search, setSearch] = useState("")
+const [openFaq, setOpenFaq] = useState(null)
+const resultsRef = useRef(null)
+
+
+useEffect(() => {
+  async function fetchOpportunities() {
+    const { data, error } = await supabase
+      .from('opportunities')
+      .select('*')
+    
+    if (error) {
+      console.error('Error fetching:', error)
+    } else {
+      setOpportunities(data)
+    }
+    setLoading(false)
+  }
+  fetchOpportunities()
+}, [])
+
 
   const faqs = [
     { q: "Who is Stride for?", a: "Stride is built for Pakistani university and college students looking for scholarships, internships, competitions, hackathons and research opportunities." },
@@ -108,31 +128,36 @@ function App() {
       </div>
 
       {/* Opportunities Section */}
-      <div ref={resultsRef} className="mt-12 px-6 md:px-10 max-w-6xl mx-auto pb-20">
-        <div className="flex justify-between items-center mb-8">
-          <h2 className="text-2xl font-bold text-gray-900">Latest Opportunities</h2>
-          <span className="text-sm text-gray-400">{filtered.length} results</span>
-        </div>
-        {filtered.length === 0 ? (
-          <div className="text-center py-20 text-gray-400">
-            <p className="text-xl font-semibold">No opportunities found</p>
-            <p className="text-sm mt-2">Try a different search or category</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filtered.map(opportunity => (
-              <OpportunityCard
-                key={opportunity.id}
-                title={opportunity.title}
-                type={opportunity.type}
-                deadline={opportunity.deadline}
-                description={opportunity.description}
-                link={opportunity.link}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+<div ref={resultsRef} className="mt-12 px-6 md:px-10 max-w-6xl mx-auto pb-20">
+  <div className="flex justify-between items-center mb-8">
+    <h2 className="text-2xl font-bold text-gray-900">Latest Opportunities</h2>
+    <span className="text-sm text-gray-400">{filtered.length} results</span>
+  </div>
+  
+  {loading ? (
+    <div className="text-center py-20 text-gray-400">
+      <p className="text-lg">Loading opportunities...</p>
+    </div>
+  ) : filtered.length === 0 ? (
+    <div className="text-center py-20 text-gray-400">
+      <p className="text-xl font-semibold">No opportunities found</p>
+      <p className="text-sm mt-2">Try a different search or category</p>
+    </div>
+  ) : (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {filtered.map(opportunity => (
+        <OpportunityCard
+          key={opportunity.id}
+          title={opportunity.title}
+          type={opportunity.type}
+          deadline={opportunity.deadline}
+          description={opportunity.description}
+          link={opportunity.link}
+        />
+      ))}
+    </div>
+  )}
+</div>
 
       {/* Why Stride Section */}
       <div className="bg-[#0a9396] py-20 px-6">
