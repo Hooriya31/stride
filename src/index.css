@@ -1,1 +1,22 @@
 @import "tailwindcss";
+
+@keyframes floatSoft {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-float-soft {
+  animation: floatSoft 6s ease-in-out infinite;
+}
+
+.animate-float-soft-delay {
+  animation: floatSoft 7s ease-in-out infinite;
+}
+
+.animate-float-soft-delay-2 {
+  animation: floatSoft 8s ease-in-out infinite;
+}

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import Logo from './logo'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useAuth } from './AuthContext'
+import { useSaved } from './SavedContext'
 
 function App() {
   const [opportunities, setOpportunities] = useState([])
@@ -19,6 +20,7 @@ function App() {
 
   const navigate = useNavigate()
   const { signOut } = useAuth()
+  const { saved } = useSaved()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const selected = searchParams.get('category') || 'All'
@@ -275,6 +277,32 @@ function App() {
           />
 
           <div className="flex items-center gap-2 shrink-0">
+
+            {/* Saved button — always visible in navbar */}
+            <button
+            onClick={() => navigate('/saved')}
+            className="relative flex items-center gap-1.5 text-gray-600 border border-gray-200 px-3 py-2 rounded-full text-sm font-medium hover:border-[#0a9396] hover:text-[#0a9396] transition-all"
+               >
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+  </svg>
+  <span className="hidden md:inline">Saved</span>
+  {saved.length > 0 && (
+    <span className="absolute -top-1.5 -right-1.5 bg-[#0a9396] text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+      {saved.length > 9 ? '9+' : saved.length}
+    </span>
+  )}
+</button>
+
             {/* Menu dropdown */}
             <div className="relative">
               <button
@@ -298,38 +326,29 @@ function App() {
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
 
-                  <div className="absolute right-0 top-12 bg-white rounded-2xl shadow-lg border border-gray-100 py-2 w-48 z-50">
-                    <button
-                      onClick={() => scrollToSection(resultsRef)}
-                      className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#0a9396] transition-all"
-                    >
-                      Opportunities
-                    </button>
-                    <button
-                      onClick={() => scrollToSection(aboutRef)}
-                      className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#0a9396] transition-all"
-                    >
-                      About
-                    </button>
-                    <button
-                      onClick={() => scrollToSection(faqRef)}
-                      className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#0a9396] transition-all"
-                    >
-                      FAQ
-                    </button>
-
-                    <div className="border-t border-gray-100 mt-1 pt-1">
-                      <button
-                        onClick={() => {
-                          setMenuOpen(false)
-                          navigate('/submit')
-                        }}
-                        className="w-full text-left px-4 py-3 text-sm text-[#0a9396] font-semibold hover:bg-gray-50 transition-all"
-                      >
-                        Submit Opportunity
-                      </button>
-                    </div>
-                  </div>
+                  <button
+  onClick={() => navigate('/saved')}
+  className="relative flex items-center gap-1.5 text-gray-600 border border-gray-200 px-3 py-2 rounded-full text-sm font-medium hover:border-[#0a9396] hover:text-[#0a9396] transition-all"
+>
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+  </svg>
+  <span className="hidden md:inline">Saved</span>
+  {saved.length > 0 && (
+    <span className="absolute -top-1.5 -right-1.5 bg-[#0a9396] text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+      {saved.length > 9 ? '9+' : saved.length}
+    </span>
+  )}
+</button>
                 </>
               )}
             </div>
@@ -541,11 +560,20 @@ function App() {
                 FAQ
               </span>
               <span
+                onClick={() => navigate('/saved')}
+                className="text-gray-400 hover:text-[#0a9396] cursor-pointer"
+              >
+                Saved Opportunities
+              </span>
+              <span
                 onClick={() => navigate('/submit')}
                 className="text-gray-400 hover:text-[#0a9396] cursor-pointer"
               >
                 Submit Opportunity
               </span>
+              <span onClick={() => navigate('/contact')} 
+              className="text-gray-400 hover:text-[#0a9396] cursor-pointer"
+              >Contact & Support</span>
             </div>
 
             <div className="flex flex-col gap-2">
@@ -568,8 +596,14 @@ function App() {
           </div>
         </div>
 
-        <div className="border-t border-gray-100 py-4 text-center text-xs text-gray-400">
-          &copy; 2026 Stride · Built for Pakistani students
+        <div className="border-t border-gray-100 py-4 text-center text-xs text-gray-400 flex flex-col gap-1">
+        <span>
+            Questions?{' '}
+            <a href="mailto:stride.pak@gmail.com" className="text-[#0a9396] hover:underline">
+              stride.pak@gmail.com
+            </a>
+           </span>
+        <span>&copy; 2026 Stride · Built for Pakistani students</span>
         </div>
       </footer>
     </div>
