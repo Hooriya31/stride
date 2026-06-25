@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState, useRef } from 'react'
 import { supabase } from './supabase'
 import { useAuth } from './AuthContext'
 
@@ -11,7 +11,7 @@ function getDaysLeft(deadline) {
   today.setHours(0, 0, 0, 0)
 
   const normalized = /^\d{4}-\d{2}-\d{2}$/.test(deadline)
-    ? deadline + 'T00:00:00'
+    ? `${deadline}T00:00:00`
     : deadline
 
   const d = new Date(normalized)
@@ -20,14 +20,23 @@ function getDaysLeft(deadline) {
   return Math.ceil((d - today) / (1000 * 60 * 60 * 24))
 }
 
+function isUrgentNotApplied(savedRow) {
+  const opp = savedRow?.opportunities
+  if (!opp) return false
+  if (savedRow.status !== 'saved') return false
+
+  const days = getDaysLeft(opp.deadline)
+  return days !== null && days >= 0 && days <= 7
+}
+
 export function SavedProvider({ children }) {
   const { user, loading: authLoading } = useAuth()
 
   const [saved, setSaved] = useState([])
   const [loadingSaved, setLoadingSaved] = useState(true)
-
-  // local unread dot state for urgent not-applied saved opportunities
   const [hasUnreadUrgentSaved, setHasUnreadUrgentSaved] = useState(false)
+
+  const fetchIdRef = useRef(0)
 
   useEffect(() => {
     if (authLoading) return
@@ -45,27 +54,16 @@ export function SavedProvider({ children }) {
   useEffect(() => {
     if (!user) return
 
-    // unread = there exists at least one urgent opportunity still in "saved" / not applied
-    const urgentNotAppliedExists = saved.some((row) => {
-      const opp = row.opportunities
-      if (!opp) return false
-      if (row.status !== 'saved') return false
-
-      const days = getDaysLeft(opp.deadline)
-      return days !== null && days >= 0 && days <= 7
-    })
-
+    const urgentExists = saved.some(isUrgentNotApplied)
     const seenKey = `savedUrgentSeen:${user.id}`
     const seenValue = localStorage.getItem(seenKey)
 
-    // if there are no urgent not-applied items, remove badge entirely
-    if (!urgentNotAppliedExists) {
+    if (!urgentExists) {
       setHasUnreadUrgentSaved(false)
       localStorage.removeItem(seenKey)
       return
     }
 
-    // if urgent items exist but user hasn't visited saved page since they appeared
     setHasUnreadUrgentSaved(seenValue !== 'true')
   }, [saved, user])
 
@@ -76,6 +74,7 @@ export function SavedProvider({ children }) {
       return
     }
 
+    const currentFetchId = ++fetchIdRef.current
     setLoadingSaved(true)
 
     const { data, error } = await supabase
@@ -91,6 +90,9 @@ export function SavedProvider({ children }) {
       `)
       .eq('user_id', user.id)
       .order('saved_at', { ascending: false })
+
+    // Ignore stale fetch responses
+    if (currentFetchId !== fetchIdRef.current) return
 
     if (error) {
       console.error('Error fetching saved:', error.message)
@@ -135,6 +137,9 @@ export function SavedProvider({ children }) {
   async function unsaveOpportunity(oppId) {
     if (!user) return { error: 'Not logged in' }
 
+    const previousSaved = saved
+    setSaved((prev) => prev.filter((s) => s.opp_id !== oppId))
+
     const { error } = await supabase
       .from('saved_opportunities')
       .delete()
@@ -143,15 +148,25 @@ export function SavedProvider({ children }) {
 
     if (error) {
       console.error('Unsave error:', error.message)
+      setSaved(previousSaved) // rollback
       return { error }
     }
 
-    setSaved((prev) => prev.filter((s) => s.opp_id !== oppId))
     return { error: null }
   }
 
   async function updateSaved(oppId, changes) {
     if (!user) return { error: 'Not logged in' }
+
+    const previousSaved = saved
+
+    setSaved((prev) =>
+      prev.map((s) =>
+        s.opp_id === oppId
+          ? { ...s, ...changes }
+          : s
+      )
+    )
 
     const { error } = await supabase
       .from('saved_opportunities')
@@ -161,16 +176,9 @@ export function SavedProvider({ children }) {
 
     if (error) {
       console.error('Update error:', error.message)
+      setSaved(previousSaved) // rollback
       return { error }
     }
-
-    setSaved((prev) =>
-      prev.map((s) =>
-        s.opp_id === oppId
-          ? { ...s, ...changes }
-          : s
-      )
-    )
 
     return { error: null }
   }
@@ -185,6 +193,10 @@ export function SavedProvider({ children }) {
 
   function markUrgentSavedAsSeen() {
     if (!user) return
+
+    const urgentExists = saved.some(isUrgentNotApplied)
+    if (!urgentExists) return
+
     localStorage.setItem(`savedUrgentSeen:${user.id}`, 'true')
     setHasUnreadUrgentSaved(false)
   }
@@ -202,6 +214,7 @@ export function SavedProvider({ children }) {
         getSavedRow,
         hasUnreadUrgentSaved,
         markUrgentSavedAsSeen,
+        isUrgentNotApplied, // useful for SavedPage / cards if you want shared logic
       }}
     >
       {children}

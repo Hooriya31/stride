@@ -2,20 +2,27 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 
 function ProtectedRoute() {
-  const { user, loading } = useAuth()
+  const { user, loading, initialized } = useAuth()
   const location = useLocation()
 
-  if (loading) {
+  if (loading || !initialized) {
     return (
-      <div className="min-h-screen bg-[#f0fafa] flex items-center justify-center">
-        <p className="text-gray-500">Loading...</p>
+      <div className="min-h-screen bg-[#f0fafa] flex items-center justify-center px-6">
+        <div className="text-center">
+          <div className="w-10 h-10 mx-auto rounded-full border-4 border-[#0a9396]/20 border-t-[#0a9396] animate-spin" />
+          <p className="text-gray-500 mt-4 text-sm">Checking your session...</p>
+        </div>
       </div>
     )
   }
 
   if (!user) {
-    // Don't use replace here — push so back button works correctly
-    return <Navigate to="/auth" state={{ from: location }} />
+    return (
+      <Navigate
+        to="/auth"
+        state={{ from: location.pathname + location.search + location.hash }}
+      />
+    )
   }
 
   return <Outlet />

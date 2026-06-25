@@ -8,7 +8,7 @@ function ContactPage() {
     email: '',
     message: '',
   })
-  const [status, setStatus] = useState('idle') // idle | sending | success | error
+  const [status, setStatus] = useState('idle')
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value })
@@ -40,7 +40,9 @@ function ContactPage() {
     <div className="min-h-screen bg-[#f0fafa]">
       <nav className="bg-white shadow-sm px-6 md:px-10 py-4">
         <div className="flex items-center justify-between max-w-6xl mx-auto">
-          <Link to="/opportunities"><Logo /></Link>
+          <Link to="/opportunities">
+            <Logo />
+          </Link>
           <Link
             to="/opportunities"
             className="text-sm text-gray-500 hover:text-[#0a9396] transition-all"
@@ -65,7 +67,7 @@ function ContactPage() {
           ].map((item) => (
             <div
               key={item.title}
-              onClick={() => setForm(f => ({ ...f, type: item.title }))}
+              onClick={() => setForm((f) => ({ ...f, type: item.title }))}
               className={`bg-white rounded-2xl border p-4 cursor-pointer transition-all ${
                 form.type === item.title
                   ? 'border-[#0a9396] shadow-sm'
@@ -149,8 +151,8 @@ function ContactPage() {
               <div className="rounded-xl bg-red-50 text-red-600 text-sm px-4 py-3">
                 Something went wrong. Try emailing us directly at{' '}
                 <a href="mailto:stride.pak@gmail.com" className="text-[#0a9396] hover:underline">
-                stride.pak@gmail.com
-               </a>
+                  stride.pak@gmail.com
+                </a>
               </div>
             )}
 
@@ -166,8 +168,8 @@ function ContactPage() {
 
         <p className="text-center text-sm text-gray-400 mt-8">
           Or email us directly:{' '}
-          <a href="mailto:hello@stride.pk" className="text-[#0a9396] hover:underline">
-            hello@stride.pk
+          <a href="mailto:stride.pak@gmail.com" className="text-[#0a9396] hover:underline">
+            stride.pak@gmail.com
           </a>
         </p>
       </div>

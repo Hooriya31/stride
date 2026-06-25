@@ -1,5 +1,3 @@
-import { initAnalytics } from './analytics.js'
-initAnalytics()
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
@@ -12,10 +10,14 @@ import LandingPage from './LandingPage.jsx'
 import AuthPage from './AuthPage.jsx'
 import ResetPassword from './ResetPassword.jsx'
 import SavedPage from './SavedPage.jsx'
+import ContactPage from './ContactPage.jsx'
+import AccountPage from './AccountPage.jsx'
 import ProtectedRoute from './ProtectedRoute.jsx'
 import { AuthProvider } from './AuthContext.jsx'
 import { SavedProvider } from './SavedContext.jsx'
-import ContactPage from './ContactPage.jsx'
+import { initAnalytics } from './analytics.js'
+
+initAnalytics()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -32,6 +34,7 @@ createRoot(document.getElementById('root')).render(
               <Route path="/submit" element={<SubmitForm />} />
               <Route path="/saved" element={<SavedPage />} />
               <Route path="/contact" element={<ContactPage />} />
+              <Route path="/account" element={<AccountPage />} />
             </Route>
 
             <Route path="/admin" element={<AdminPanel />} />

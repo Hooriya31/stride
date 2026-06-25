@@ -20,13 +20,13 @@ function App() {
 
   const navigate = useNavigate()
   const { signOut } = useAuth()
-  const { saved, hasUnreadUrgentSaved } = useSaved()
+  const { hasUnreadUrgentSaved } = useSaved()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const selected = searchParams.get('category') || 'All'
   const search = searchParams.get('search') || ''
   const location = searchParams.get('location') || 'All'
-  const city = searchParams.get('city') || ''
+  const city = (searchParams.get('city') || '').trim()
   const sortBy = searchParams.get('sort') || 'default'
 
   const handleLogout = async () => {
@@ -60,6 +60,7 @@ function App() {
         .from('opportunities')
         .select('*')
         .eq('status', 'approved')
+        .order('created_at', { ascending: false })
 
       if (error) {
         console.error('Error fetching opportunities:', error.message)
@@ -103,13 +104,27 @@ function App() {
   let filtered = opportunities
     .filter((o) => selected === 'All' || o.type === categoryMap[selected])
     .filter((o) => location === 'All' || o.location === location)
-    .filter((o) => city === '' || (o.city && o.city.toLowerCase().includes(city.toLowerCase())))
-    .filter((o) => o.title.toLowerCase().includes(search.toLowerCase()))
+    .filter(
+      (o) =>
+        city === '' ||
+        ((o.city || '').toLowerCase().includes(city.toLowerCase()))
+    )
+    .filter((o) => {
+      const q = search.toLowerCase()
+      return (
+        (o.title || '').toLowerCase().includes(q) ||
+        (o.organization || '').toLowerCase().includes(q) ||
+        (o.city || '').toLowerCase().includes(q) ||
+        (o.type || '').toLowerCase().includes(q)
+      )
+    })
 
   if (sortBy === 'deadline') {
-    filtered = [...filtered].sort(
-      (a, b) => new Date(a.deadline) - new Date(b.deadline)
-    )
+    filtered = [...filtered].sort((a, b) => {
+      const aDate = a.deadline ? new Date(a.deadline) : new Date('9999-12-31')
+      const bDate = b.deadline ? new Date(b.deadline) : new Date('9999-12-31')
+      return aDate - bDate
+    })
   }
 
   const toggleFilter = (name) => {
@@ -140,7 +155,9 @@ function App() {
         <span className="text-gray-400">{openFilter === name ? '−' : '+'}</span>
       </button>
 
-      {openFilter === name && <div className="mt-3 flex flex-col gap-1">{children}</div>}
+      {openFilter === name && (
+        <div className="mt-3 flex flex-col gap-1">{children}</div>
+      )}
     </div>
   )
 
@@ -187,28 +204,39 @@ function App() {
 
         <div className="px-6 py-4 overflow-y-auto h-full pb-20">
           <FilterSection name="Category">
-            {['All', 'Scholarships', 'Internships', 'Competitions', 'Hackathons', 'Research'].map(
-              (cat) => (
-                <button
-                  key={cat}
-                  onClick={() => updateFilter('category', cat)}
-                  className={`text-left text-sm px-3 py-2 rounded-lg transition-all ${
-                    selected === cat
-                      ? 'bg-[#0a939615] text-[#0a9396] font-semibold'
-                      : 'text-gray-500 hover:bg-gray-50'
-                  }`}
-                >
-                  {cat}
-                </button>
-              )
-            )}
+            {[
+              'All',
+              'Scholarships',
+              'Internships',
+              'Competitions',
+              'Hackathons',
+              'Research',
+            ].map((cat) => (
+              <button
+                key={cat}
+                onClick={() => {
+                  updateFilter('category', cat)
+                  setSidebarOpen(false)
+                }}
+                className={`text-left text-sm px-3 py-2 rounded-lg transition-all ${
+                  selected === cat
+                    ? 'bg-[#0a939615] text-[#0a9396] font-semibold'
+                    : 'text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
           </FilterSection>
 
           <FilterSection name="Location Type">
             {['All', 'Remote', 'Onsite', 'Hybrid'].map((loc) => (
               <button
                 key={loc}
-                onClick={() => updateFilter('location', loc)}
+                onClick={() => {
+                  updateFilter('location', loc)
+                  setSidebarOpen(false)
+                }}
                 className={`text-left text-sm px-3 py-2 rounded-lg transition-all ${
                   location === loc
                     ? 'bg-[#0a939615] text-[#0a9396] font-semibold'
@@ -238,7 +266,10 @@ function App() {
             ].map((sort) => (
               <button
                 key={sort.value}
-                onClick={() => updateFilter('sort', sort.value)}
+                onClick={() => {
+                  updateFilter('sort', sort.value)
+                  setSidebarOpen(false)
+                }}
                 className={`text-left text-sm px-3 py-2 rounded-lg transition-all ${
                   sortBy === sort.value
                     ? 'bg-[#0a939615] text-[#0a9396] font-semibold'
@@ -278,31 +309,6 @@ function App() {
           />
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Saved button */}
-            <button
-  onClick={() => navigate('/saved')}
-  className="relative flex items-center gap-1.5 text-gray-600 border border-gray-200 px-3 py-2 rounded-full text-sm font-medium hover:border-[#0a9396] hover:text-[#0a9396] transition-all"
->
-  <svg
-    width="14"
-    height="14"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-  </svg>
-
-  <span className="hidden md:inline">Saved</span>
-
-  {hasUnreadUrgentSaved && (
-    <span className="absolute -top-1 -right-1.5 w-3 h-3 rounded-full bg-red-500 border-2 border-white" />
-  )}
-</button>
-
             {/* Menu dropdown */}
             <div className="relative">
               <button
@@ -328,59 +334,55 @@ function App() {
                     className="fixed inset-0 z-40"
                     onClick={() => setMenuOpen(false)}
                   />
-
-                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl border border-gray-100 shadow-xl z-50 p-2">
+                  <div className="absolute right-0 top-12 bg-white rounded-2xl shadow-lg border border-gray-100 py-2 w-52 z-50">
                     <button
-                      onClick={() => {
-                        setMenuOpen(false)
-                        resultsRef.current?.scrollIntoView({ behavior: 'smooth' })
-                      }}
-                      className="w-full text-left px-4 py-3 rounded-xl text-sm text-gray-700 hover:bg-[#0a939610] hover:text-[#0a9396] transition-all"
+                      onClick={() => scrollToSection(resultsRef)}
+                      className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#0a9396] transition-all"
                     >
                       Opportunities
                     </button>
-
                     <button
-                      onClick={() => {
-                        setMenuOpen(false)
-                        aboutRef.current?.scrollIntoView({ behavior: 'smooth' })
-                      }}
-                      className="w-full text-left px-4 py-3 rounded-xl text-sm text-gray-700 hover:bg-[#0a939610] hover:text-[#0a9396] transition-all"
+                      onClick={() => scrollToSection(aboutRef)}
+                      className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#0a9396] transition-all"
                     >
                       About
                     </button>
-
                     <button
-                      onClick={() => {
-                        setMenuOpen(false)
-                        faqRef.current?.scrollIntoView({ behavior: 'smooth' })
-                      }}
-                      className="w-full text-left px-4 py-3 rounded-xl text-sm text-gray-700 hover:bg-[#0a939610] hover:text-[#0a9396] transition-all"
+                      onClick={() => scrollToSection(faqRef)}
+                      className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#0a9396] transition-all"
                     >
                       FAQ
                     </button>
-
                     <button
                       onClick={() => {
                         setMenuOpen(false)
                         navigate('/contact')
                       }}
-                      className="w-full text-left px-4 py-3 rounded-xl text-sm text-gray-700 hover:bg-[#0a939610] hover:text-[#0a9396] transition-all"
+                      className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#0a9396] transition-all"
                     >
                       Contact & Support
                     </button>
 
-                    <div className="my-2 border-t border-gray-100" />
-
-                    <button
-                      onClick={() => {
-                        setMenuOpen(false)
-                        navigate('/submit')
-                      }}
-                      className="w-full text-left px-4 py-3 rounded-xl text-sm text-gray-700 hover:bg-[#0a939610] hover:text-[#0a9396] transition-all"
-                    >
-                      Submit Opportunity
-                    </button>
+                    <div className="border-t border-gray-100 mt-1 pt-1">
+                      <button
+                        onClick={() => {
+                          setMenuOpen(false)
+                          navigate('/submit')
+                        }}
+                        className="w-full text-left px-4 py-3 text-sm text-[#0a9396] font-semibold hover:bg-gray-50 transition-all"
+                      >
+                        Submit Opportunity
+                      </button>
+                      <button
+                        onClick={() => {
+                          setMenuOpen(false)
+                          handleLogout()
+                        }}
+                        className="w-full text-left px-4 py-3 text-sm text-red-500 font-medium hover:bg-red-50 transition-all"
+                      >
+                        Log out
+                      </button>
+                    </div>
                   </div>
                 </>
               )}
@@ -395,12 +397,29 @@ function App() {
               <span className="hidden md:inline">Filters</span>
             </button>
 
-            {/* Logout button */}
+            {/* Profile icon with urgency dot */}
             <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 text-gray-600 border border-gray-200 px-3 py-2 rounded-full text-sm font-medium hover:border-red-300 hover:text-red-500 transition-all"
+              onClick={() => navigate('/account')}
+              className="relative w-9 h-9 rounded-full bg-[#0a939615] flex items-center justify-center hover:bg-[#0a939625] transition-all border border-[#0a939630]"
+              title="Account"
             >
-              Logout
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#0a9396"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+
+              {hasUnreadUrgentSaved && (
+                <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full border-2 border-white" />
+              )}
             </button>
           </div>
         </div>
@@ -440,7 +459,9 @@ function App() {
           All in one place
         </p>
         <button
-          onClick={() => resultsRef.current?.scrollIntoView({ behavior: 'smooth' })}
+          onClick={() =>
+            resultsRef.current?.scrollIntoView({ behavior: 'smooth' })
+          }
           className="mt-8 bg-[#0a9396] hover:bg-[#007f82] text-white px-8 py-3 rounded-full font-semibold transition-all shadow-lg"
         >
           Explore Opportunities
@@ -448,11 +469,18 @@ function App() {
       </div>
 
       {/* Opportunities Section */}
-      <div ref={resultsRef} className="max-w-6xl mx-auto px-6 md:px-10 mt-12 pb-20">
+      <div
+        ref={resultsRef}
+        className="max-w-6xl mx-auto px-6 md:px-10 mt-12 pb-20"
+      >
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-3">
-            <h2 className="text-xl font-bold text-gray-900">Latest Opportunities</h2>
-            <span className="text-sm text-gray-400">{filtered.length} results</span>
+            <h2 className="text-xl font-bold text-gray-900">
+              Latest Opportunities
+            </h2>
+            <span className="text-sm text-gray-400">
+              {filtered.length} results
+            </span>
           </div>
 
           {hasActiveFilters && (
@@ -481,7 +509,8 @@ function App() {
                 key={o.id}
                 {...o}
                 isNew={
-                  new Date() - new Date(o.created_at) < 7 * 24 * 60 * 60 * 1000
+                  new Date() - new Date(o.created_at) <
+                  7 * 24 * 60 * 60 * 1000
                 }
               />
             ))}
@@ -492,10 +521,13 @@ function App() {
       {/* About */}
       <div ref={aboutRef} className="bg-[#0a9396] py-20 px-6">
         <div className="max-w-6xl mx-auto">
-          <h2 className="text-3xl font-bold text-white text-center mb-4">About Stride</h2>
+          <h2 className="text-3xl font-bold text-white text-center mb-4">
+            About Stride
+          </h2>
           <p className="text-center text-[#d0f0f0] mb-12 max-w-xl mx-auto">
-            Most Pakistani students miss life-changing opportunities not because they lack
-            talent — but because no one told them these opportunities existed.
+            Most Pakistani students miss life-changing opportunities not because
+            they lack talent — but because no one told them these opportunities
+            existed.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -548,7 +580,9 @@ function App() {
                 className="w-full flex justify-between items-center px-6 py-4 text-left font-semibold text-gray-800 hover:text-[#0a9396] transition-all"
               >
                 {faq.q}
-                <span className="text-[#0a9396] text-xl">{openFaq === i ? '−' : '+'}</span>
+                <span className="text-[#0a9396] text-xl">
+                  {openFaq === i ? '−' : '+'}
+                </span>
               </button>
 
               {openFaq === i && (
@@ -614,20 +648,24 @@ function App() {
 
             <div className="flex flex-col gap-2">
               <h3 className="font-semibold text-gray-700">Categories</h3>
-              {['Scholarships', 'Internships', 'Competitions', 'Hackathons', 'Research'].map(
-                (cat) => (
-                  <span
-                    key={cat}
-                    onClick={() => {
-                      updateFilter('category', cat)
-                      resultsRef.current?.scrollIntoView({ behavior: 'smooth' })
-                    }}
-                    className="text-gray-400 hover:text-[#0a9396] cursor-pointer"
-                  >
-                    {cat}
-                  </span>
-                )
-              )}
+              {[
+                'Scholarships',
+                'Internships',
+                'Competitions',
+                'Hackathons',
+                'Research',
+              ].map((cat) => (
+                <span
+                  key={cat}
+                  onClick={() => {
+                    updateFilter('category', cat)
+                    resultsRef.current?.scrollIntoView({ behavior: 'smooth' })
+                  }}
+                  className="text-gray-400 hover:text-[#0a9396] cursor-pointer"
+                >
+                  {cat}
+                </span>
+              ))}
             </div>
           </div>
         </div>
@@ -635,7 +673,10 @@ function App() {
         <div className="border-t border-gray-100 py-4 text-center text-xs text-gray-400 flex flex-col gap-1">
           <span>
             Questions?{' '}
-            <a href="mailto:stride.pak@gmail.com" className="text-[#0a9396] hover:underline">
+            <a
+              href="mailto:stride.pak@gmail.com"
+              className="text-[#0a9396] hover:underline"
+            >
               stride.pak@gmail.com
             </a>
           </span>

@@ -2,35 +2,92 @@ import { useSaved } from './SavedContext'
 import { Link } from 'react-router-dom'
 
 function getDaysLeft(deadline) {
-  if (!deadline) return { text: 'No deadline', style: 'bg-gray-100 text-gray-400' }
+  if (!deadline) {
+    return {
+      text: 'No deadline',
+      style: 'bg-gray-100 text-gray-400',
+      isExpired: false,
+      isClosingSoon: false,
+    }
+  }
 
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
-  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(deadline)
-    ? deadline + 'T00:00:00'
-    : deadline
+  const normalized =
+    /^\d{4}-\d{2}-\d{2}$/.test(deadline)
+      ? `${deadline}T00:00:00`
+      : deadline
 
   const deadlineDate = new Date(normalized)
-  if (isNaN(deadlineDate)) return { text: 'Invalid date', style: 'bg-gray-100 text-gray-400' }
+
+  if (isNaN(deadlineDate)) {
+    return {
+      text: 'Invalid date',
+      style: 'bg-gray-100 text-gray-400',
+      isExpired: false,
+      isClosingSoon: false,
+    }
+  }
 
   const diff = deadlineDate - today
   const daysLeft = Math.ceil(diff / (1000 * 60 * 60 * 24))
 
-  if (daysLeft < 0) return { text: 'Expired', style: 'bg-gray-100 text-gray-400' }
-  if (daysLeft === 0) return { text: 'Last day!', style: 'bg-red-100 text-red-600' }
-  if (daysLeft <= 7) return { text: `${daysLeft}d left`, style: 'bg-red-100 text-red-600' }
-  if (daysLeft <= 30) return { text: `${daysLeft}d left`, style: 'bg-orange-100 text-orange-600' }
-  return { text: `${daysLeft}d left`, style: 'bg-green-100 text-green-700' }
+  if (daysLeft < 0) {
+    return {
+      text: 'Expired',
+      style: 'bg-gray-100 text-gray-400',
+      isExpired: true,
+      isClosingSoon: false,
+    }
+  }
+
+  if (daysLeft === 0) {
+    return {
+      text: 'Last day!',
+      style: 'bg-red-100 text-red-600',
+      isExpired: false,
+      isClosingSoon: true,
+    }
+  }
+
+  if (daysLeft <= 7) {
+    return {
+      text: `${daysLeft}d left`,
+      style: 'bg-red-100 text-red-600',
+      isExpired: false,
+      isClosingSoon: true,
+    }
+  }
+
+  if (daysLeft <= 30) {
+    return {
+      text: `${daysLeft}d left`,
+      style: 'bg-orange-100 text-orange-600',
+      isExpired: false,
+      isClosingSoon: false,
+    }
+  }
+
+  return {
+    text: `${daysLeft}d left`,
+    style: 'bg-green-100 text-green-700',
+    isExpired: false,
+    isClosingSoon: false,
+  }
 }
 
 function formatDeadline(deadline) {
   if (!deadline) return ''
-  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(deadline)
-    ? deadline + 'T00:00:00'
-    : deadline
+
+  const normalized =
+    /^\d{4}-\d{2}-\d{2}$/.test(deadline)
+      ? `${deadline}T00:00:00`
+      : deadline
+
   const d = new Date(normalized)
   if (isNaN(d)) return deadline
+
   return d.toLocaleDateString('en-PK', {
     day: 'numeric',
     month: 'short',
@@ -50,43 +107,57 @@ function OpportunityCard({
   city,
   organization,
   verified,
+  featured,
   discipline,
   level,
-  previewOnly = false, // 👈 added
+  previewOnly = false,
 }) {
-  const { isSaved, saveOpportunity, unsaveOpportunity } = useSaved()
+  const { isSaved, saveOpportunity, unsaveOpportunity, loadingIds = [] } = useSaved()
   const saved = isSaved(id)
+  const saveLoading = loadingIds.includes(id)
 
   const days = getDaysLeft(deadline)
-  const closingSoon = days.style.includes('red') && !days.text.includes('Expired')
+  const closingSoon = days.isClosingSoon
 
-  const handleShare = () => {
+  const handleShare = async () => {
     if (!link) return
 
-    if (navigator.share) {
-      navigator.share({ title, url: link })
-    } else {
-      navigator.clipboard.writeText(link)
-      alert('Link copied to clipboard!')
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, url: link })
+      } else {
+        await navigator.clipboard.writeText(link)
+        alert('Link copied to clipboard!')
+      }
+    } catch (err) {
+      console.error('Share failed:', err)
+      alert('Could not share/copy link')
     }
   }
 
   const handleSaveToggle = async () => {
-  if (saved) {
-    await unsaveOpportunity(id)
-  } else {
-    await saveOpportunity(id)
+    if (saveLoading) return
+
+    if (saved) {
+      await unsaveOpportunity(id)
+    } else {
+      await saveOpportunity(id)
+    }
   }
-}
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-all flex flex-col h-full min-h-[340px]">
-      {/* Top badges row */}
       <div className="flex justify-between items-start gap-3 min-h-[32px]">
         <div className="flex gap-2 flex-wrap items-center">
           <span className="text-xs font-semibold text-[#0a9396] bg-[#0a939615] px-3 py-1 rounded-full">
             {type}
           </span>
+
+          {featured && (
+            <span className="text-xs font-semibold text-yellow-700 bg-yellow-50 px-2 py-1 rounded-full">
+              ★ Featured
+            </span>
+          )}
 
           {verified && (
             <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-full">
@@ -102,12 +173,13 @@ function OpportunityCard({
             </span>
           )}
 
-          {/* hide save button on landing preview */}
           {!previewOnly && (
             <button
+              type="button"
               onClick={handleSaveToggle}
+              disabled={saveLoading}
               title={saved ? 'Remove from saved' : 'Save this opportunity'}
-              className="transition-all hover:scale-110 p-0.5"
+              className="transition-all hover:scale-110 p-0.5 disabled:opacity-50"
             >
               <svg
                 width="18"
@@ -126,7 +198,6 @@ function OpportunityCard({
         </div>
       </div>
 
-      {/* Closing soon banner */}
       <div className="mt-3 min-h-[40px]">
         {closingSoon && (
           <div className="bg-red-50 text-red-500 text-xs font-semibold px-3 py-2 rounded-lg">
@@ -135,7 +206,6 @@ function OpportunityCard({
         )}
       </div>
 
-      {/* Main content */}
       <div className="mt-2 flex-1 flex flex-col">
         <div className="min-h-[72px]">
           <h3 className="text-base font-bold text-gray-900 leading-snug line-clamp-2">
@@ -147,7 +217,7 @@ function OpportunityCard({
         </div>
 
         <p className="text-sm text-gray-500 mt-2 leading-relaxed line-clamp-3 min-h-[72px]">
-          {description}
+          {description || 'No description available.'}
         </p>
 
         <div className="flex gap-2 mt-4 flex-wrap min-h-[32px]">
@@ -174,7 +244,6 @@ function OpportunityCard({
         </div>
       </div>
 
-      {/* Footer */}
       <div className="mt-6 pt-4 border-t border-gray-100 flex justify-between items-end gap-3">
         <div className="flex flex-col gap-1">
           <span className="text-xs text-gray-400">{formatDeadline(deadline)}</span>
@@ -186,20 +255,32 @@ function OpportunityCard({
         {!previewOnly ? (
           <div className="flex gap-2 shrink-0">
             <button
+              type="button"
               onClick={handleShare}
-              className="text-sm border border-gray-200 text-gray-500 px-3 py-2 rounded-full hover:border-[#0a9396] hover:text-[#0a9396] transition-all"
+              disabled={!link}
+              className={`text-sm px-3 py-2 rounded-full transition-all border ${
+                link
+                  ? 'border-gray-200 text-gray-500 hover:border-[#0a9396] hover:text-[#0a9396]'
+                  : 'border-gray-100 text-gray-300 cursor-not-allowed'
+              }`}
             >
               Share
             </button>
 
-            <a
-              href={link}
-              target="_blank"
-              rel="noreferrer"
-              className="text-sm bg-[#0a9396] text-white px-5 py-2 rounded-full hover:bg-[#007f82] transition-all"
-            >
-              Apply →
-            </a>
+            {link ? (
+              <a
+                href={link}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm bg-[#0a9396] text-white px-5 py-2 rounded-full hover:bg-[#007f82] transition-all"
+              >
+                Apply →
+              </a>
+            ) : (
+              <span className="text-sm bg-gray-200 text-gray-400 px-5 py-2 rounded-full cursor-not-allowed">
+                No link
+              </span>
+            )}
           </div>
         ) : (
           <Link

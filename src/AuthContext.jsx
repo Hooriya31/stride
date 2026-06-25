@@ -1,96 +1,197 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './supabase'
 
-const AuthContext = createContext()
+const AuthContext = createContext(undefined)
+
+function normalizeEmail(email = '') {
+  return email.trim().toLowerCase()
+}
 
 export function AuthProvider({ children }) {
+  const mountedRef = useRef(true)
+
   const [user, setUser] = useState(null)
+  const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [initialized, setInitialized] = useState(false)
 
-  useEffect(() => {
-    let mounted = true
+  const applySession = useCallback((nextSession) => {
+    setSession(nextSession ?? null)
+    setUser(nextSession?.user ?? null)
+  }, [])
 
-    const getInitialSession = async () => {
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession()
+  const safeFinishInit = useCallback(() => {
+    if (!mountedRef.current) return
+    setLoading(false)
+    setInitialized(true)
+  }, [])
 
-      if (!mounted) return
-
-      if (error) {
-        console.error('Error getting session:', error.message)
+  const runAuthAction = useCallback(async (action) => {
+    try {
+      const result = await action()
+      return result
+    } catch (err) {
+      return {
+        data: null,
+        error: {
+          message:
+            err instanceof Error ? err.message : 'Something went wrong. Please try again.',
+        },
       }
-
-      setUser(session?.user ?? null)
-      setLoading(false)
-    }
-
-    getInitialSession()
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!mounted) return
-      setUser(session?.user ?? null)
-      setLoading(false)
-    })
-
-    return () => {
-      mounted = false
-      subscription.unsubscribe()
     }
   }, [])
 
-  const signUp = async (email, password) => {
-    const cleanEmail = email.trim().toLowerCase()
+  useEffect(() => {
+    mountedRef.current = true
 
-    const { data, error } = await supabase.auth.signUp({
-      email: cleanEmail,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth`,
-      },
+    let authSubscription = null
+
+    async function bootstrapAuth() {
+      try {
+        const {
+          data: { session: currentSession },
+          error,
+        } = await supabase.auth.getSession()
+
+        if (!mountedRef.current) return
+
+        if (error) {
+          console.error('Error getting initial session:', error.message)
+        }
+
+        applySession(currentSession)
+      } catch (err) {
+        if (!mountedRef.current) return
+        console.error('Unexpected auth bootstrap error:', err)
+        applySession(null)
+      } finally {
+        safeFinishInit()
+      }
+    }
+
+    bootstrapAuth()
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!mountedRef.current) return
+      applySession(nextSession)
+      setLoading(false)
+      setInitialized(true)
     })
 
-    return { data, error }
-  }
+    authSubscription = subscription
 
-  const signIn = async (email, password) => {
-    const cleanEmail = email.trim().toLowerCase()
+    return () => {
+      mountedRef.current = false
+      authSubscription?.unsubscribe?.()
+    }
+  }, [applySession, safeFinishInit])
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: cleanEmail,
-      password,
-    })
+  const signUp = useCallback(async (email, password) => {
+    const cleanEmail = normalizeEmail(email)
 
-    return { data, error }
-  }
+    if (!cleanEmail || !password) {
+      return {
+        data: null,
+        error: { message: 'Email and password are required.' },
+      }
+    }
 
-  const signOut = async () => {
-    const { error } = await supabase.auth.signOut()
-    return { error }
-  }
+    return runAuthAction(() =>
+      supabase.auth.signUp({
+        email: cleanEmail,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth`,
+        },
+      })
+    )
+  }, [runAuthAction])
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        signUp,
-        signIn,
-        signOut,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+  const signIn = useCallback(async (email, password) => {
+    const cleanEmail = normalizeEmail(email)
+
+    if (!cleanEmail || !password) {
+      return {
+        data: null,
+        error: { message: 'Email and password are required.' },
+      }
+    }
+
+    return runAuthAction(() =>
+      supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      })
+    )
+  }, [runAuthAction])
+
+  const signOut = useCallback(async () => {
+    return runAuthAction(() => supabase.auth.signOut())
+  }, [runAuthAction])
+
+  const sendPasswordReset = useCallback(async (email) => {
+    const cleanEmail = normalizeEmail(email)
+
+    if (!cleanEmail) {
+      return {
+        data: null,
+        error: { message: 'Email is required.' },
+      }
+    }
+
+    return runAuthAction(() =>
+      supabase.auth.resetPasswordForEmail(cleanEmail, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      })
+    )
+  }, [runAuthAction])
+
+  const refreshSession = useCallback(async () => {
+    const result = await runAuthAction(() => supabase.auth.refreshSession())
+
+    if (result?.data?.session) {
+      applySession(result.data.session)
+    }
+
+    return result
+  }, [applySession, runAuthAction])
+
+  const value = useMemo(
+    () => ({
+      user,
+      session,
+      loading,
+      initialized,
+      isAuthenticated: !!user,
+
+      signUp,
+      signIn,
+      signOut,
+      sendPasswordReset,
+      refreshSession,
+    }),
+    [
+      user,
+      session,
+      loading,
+      initialized,
+      signUp,
+      signIn,
+      signOut,
+      sendPasswordReset,
+      refreshSession,
+    ]
   )
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {
   const context = useContext(AuthContext)
 
-  if (!context) {
+  if (context === undefined) {
     throw new Error('useAuth must be used inside an AuthProvider')
   }
 
