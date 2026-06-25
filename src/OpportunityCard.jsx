@@ -71,13 +71,13 @@ function OpportunityCard({
     }
   }
 
-  const handleSaveToggle = () => {
-    if (saved) {
-      unsaveOpportunity(id)
-    } else {
-      saveOpportunity(id)
-    }
+  const handleSaveToggle = async () => {
+  if (saved) {
+    await unsaveOpportunity(id)
+  } else {
+    await saveOpportunity(id)
   }
+}
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-all flex flex-col h-full min-h-[340px]">

@@ -31,6 +31,7 @@ export function AuthProvider({ children }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return
       setUser(session?.user ?? null)
       setLoading(false)
     })
@@ -42,18 +43,27 @@ export function AuthProvider({ children }) {
   }, [])
 
   const signUp = async (email, password) => {
+    const cleanEmail = email.trim().toLowerCase()
+
     const { data, error } = await supabase.auth.signUp({
-      email,
+      email: cleanEmail,
       password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth`,
+      },
     })
+
     return { data, error }
   }
 
   const signIn = async (email, password) => {
+    const cleanEmail = email.trim().toLowerCase()
+
     const { data, error } = await supabase.auth.signInWithPassword({
-      email,
+      email: cleanEmail,
       password,
     })
+
     return { data, error }
   }
 

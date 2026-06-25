@@ -20,7 +20,7 @@ function App() {
 
   const navigate = useNavigate()
   const { signOut } = useAuth()
-  const { saved } = useSaved()
+  const { saved, hasUnreadUrgentSaved } = useSaved()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const selected = searchParams.get('category') || 'All'
@@ -38,6 +38,7 @@ function App() {
       console.error('Logout error:', error.message)
       return
     }
+
     navigate('/', { replace: true })
   }
 
@@ -277,12 +278,11 @@ function App() {
           />
 
           <div className="flex items-center gap-2 shrink-0">
-
-            {/* Saved button — always visible in navbar */}
+            {/* Saved button */}
             <button
-            onClick={() => navigate('/saved')}
-            className="relative flex items-center gap-1.5 text-gray-600 border border-gray-200 px-3 py-2 rounded-full text-sm font-medium hover:border-[#0a9396] hover:text-[#0a9396] transition-all"
-               >
+  onClick={() => navigate('/saved')}
+  className="relative flex items-center gap-1.5 text-gray-600 border border-gray-200 px-3 py-2 rounded-full text-sm font-medium hover:border-[#0a9396] hover:text-[#0a9396] transition-all"
+>
   <svg
     width="14"
     height="14"
@@ -295,11 +295,11 @@ function App() {
   >
     <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
   </svg>
+
   <span className="hidden md:inline">Saved</span>
-  {saved.length > 0 && (
-    <span className="absolute -top-1.5 -right-1.5 bg-[#0a9396] text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
-      {saved.length > 9 ? '9+' : saved.length}
-    </span>
+
+  {hasUnreadUrgentSaved && (
+    <span className="absolute -top-1 -right-1.5 w-3 h-3 rounded-full bg-red-500 border-2 border-white" />
   )}
 </button>
 
@@ -324,31 +324,64 @@ function App() {
 
               {menuOpen && (
                 <>
-                  <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setMenuOpen(false)}
+                  />
 
-                  <button
-  onClick={() => navigate('/saved')}
-  className="relative flex items-center gap-1.5 text-gray-600 border border-gray-200 px-3 py-2 rounded-full text-sm font-medium hover:border-[#0a9396] hover:text-[#0a9396] transition-all"
->
-  <svg
-    width="14"
-    height="14"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-  </svg>
-  <span className="hidden md:inline">Saved</span>
-  {saved.length > 0 && (
-    <span className="absolute -top-1.5 -right-1.5 bg-[#0a9396] text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
-      {saved.length > 9 ? '9+' : saved.length}
-    </span>
-  )}
-</button>
+                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl border border-gray-100 shadow-xl z-50 p-2">
+                    <button
+                      onClick={() => {
+                        setMenuOpen(false)
+                        resultsRef.current?.scrollIntoView({ behavior: 'smooth' })
+                      }}
+                      className="w-full text-left px-4 py-3 rounded-xl text-sm text-gray-700 hover:bg-[#0a939610] hover:text-[#0a9396] transition-all"
+                    >
+                      Opportunities
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setMenuOpen(false)
+                        aboutRef.current?.scrollIntoView({ behavior: 'smooth' })
+                      }}
+                      className="w-full text-left px-4 py-3 rounded-xl text-sm text-gray-700 hover:bg-[#0a939610] hover:text-[#0a9396] transition-all"
+                    >
+                      About
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setMenuOpen(false)
+                        faqRef.current?.scrollIntoView({ behavior: 'smooth' })
+                      }}
+                      className="w-full text-left px-4 py-3 rounded-xl text-sm text-gray-700 hover:bg-[#0a939610] hover:text-[#0a9396] transition-all"
+                    >
+                      FAQ
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setMenuOpen(false)
+                        navigate('/contact')
+                      }}
+                      className="w-full text-left px-4 py-3 rounded-xl text-sm text-gray-700 hover:bg-[#0a939610] hover:text-[#0a9396] transition-all"
+                    >
+                      Contact & Support
+                    </button>
+
+                    <div className="my-2 border-t border-gray-100" />
+
+                    <button
+                      onClick={() => {
+                        setMenuOpen(false)
+                        navigate('/submit')
+                      }}
+                      className="w-full text-left px-4 py-3 rounded-xl text-sm text-gray-700 hover:bg-[#0a939610] hover:text-[#0a9396] transition-all"
+                    >
+                      Submit Opportunity
+                    </button>
+                  </div>
                 </>
               )}
             </div>
@@ -571,9 +604,12 @@ function App() {
               >
                 Submit Opportunity
               </span>
-              <span onClick={() => navigate('/contact')} 
-              className="text-gray-400 hover:text-[#0a9396] cursor-pointer"
-              >Contact & Support</span>
+              <span
+                onClick={() => navigate('/contact')}
+                className="text-gray-400 hover:text-[#0a9396] cursor-pointer"
+              >
+                Contact & Support
+              </span>
             </div>
 
             <div className="flex flex-col gap-2">
@@ -597,13 +633,13 @@ function App() {
         </div>
 
         <div className="border-t border-gray-100 py-4 text-center text-xs text-gray-400 flex flex-col gap-1">
-        <span>
+          <span>
             Questions?{' '}
             <a href="mailto:stride.pak@gmail.com" className="text-[#0a9396] hover:underline">
               stride.pak@gmail.com
             </a>
-           </span>
-        <span>&copy; 2026 Stride · Built for Pakistani students</span>
+          </span>
+          <span>&copy; 2026 Stride · Built for Pakistani students</span>
         </div>
       </footer>
     </div>

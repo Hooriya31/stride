@@ -4,6 +4,16 @@ import { useAuth } from './AuthContext'
 import { supabase } from './supabase'
 import Logo from './logo'
 
+const MIN_PASSWORD_LENGTH = 8
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+function normalizeEmail(email) {
+  return email.trim().toLowerCase()
+}
+
 function AuthPage() {
   const { signIn, signUp } = useAuth()
   const navigate = useNavigate()
@@ -18,41 +28,108 @@ function AuthPage() {
 
   const from = location.state?.from?.pathname || '/opportunities'
 
+  const clearFeedback = () => {
+    setError('')
+    setMessage('')
+  }
+
+  const switchMode = (nextMode) => {
+    setMode(nextMode)
+    clearFeedback()
+    if (nextMode === 'forgot') {
+      setPassword('')
+    }
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
-    setError('')
-    setMessage('')
+    clearFeedback()
+
+    const cleanEmail = normalizeEmail(email)
 
     try {
+      // Shared email validation for all modes
+      if (!cleanEmail) {
+        setError('Please enter your email address.')
+        setLoading(false)
+        return
+      }
+
+      if (!isValidEmail(cleanEmail)) {
+        setError('Please enter a valid email address.')
+        setLoading(false)
+        return
+      }
+
       if (mode === 'forgot') {
-        const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
           redirectTo: `${window.location.origin}/reset-password`,
         })
-        if (error) setError(error.message)
-        else setMessage('Check your email for a password reset link.')
 
-      } else if (mode === 'signup') {
-        const { data, error } = await signUp(email, password)
         if (error) {
-          setError(error.message)
+          setError('Could not send reset email. Please try again.')
+        } else {
+          setMessage('Check your email for a password reset link.')
+        }
+
+        setLoading(false)
+        return
+      }
+
+      // Password validation for sign in / sign up
+      if (!password) {
+        setError('Please enter your password.')
+        setLoading(false)
+        return
+      }
+
+      if (mode === 'signup' && password.length < MIN_PASSWORD_LENGTH) {
+        setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`)
+        setLoading(false)
+        return
+      }
+
+      if (mode === 'signup') {
+        const { data, error } = await signUp(cleanEmail, password)
+
+        if (error) {
+          const msg = error.message?.toLowerCase() || ''
+
+          if (
+            msg.includes('already registered') ||
+            msg.includes('user already registered') ||
+            msg.includes('already exists')
+          ) {
+            setError('An account with this email already exists. Try signing in instead.')
+          } else if (msg.includes('password')) {
+            setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`)
+          } else {
+            setError('Could not create your account. Please try again.')
+          }
         } else {
           if (data?.user && !data?.session) {
             setMessage('Account created! Please check your email and confirm your account before signing in.')
           } else {
             setMessage('Account created successfully. You can now sign in.')
           }
+
           setMode('signin')
+          setPassword('')
         }
 
+        setLoading(false)
+        return
+      }
+
+      // SIGN IN
+      const { error } = await signIn(cleanEmail, password)
+
+      if (error) {
+        // Keep this generic for security
+        setError('Incorrect email or password.')
       } else {
-        const { error } = await signIn(email, password)
-        if (error) {
-          setError(error.message)
-        } else {
-          // Use replace only here so /auth doesn't stay in history after login
-          navigate(from, { replace: true })
-        }
+        navigate(from, { replace: true })
       }
     } catch (err) {
       setError('Something went wrong. Please try again.')
@@ -78,16 +155,24 @@ function AuthPage() {
       <nav className="bg-white shadow-sm px-6 md:px-10 py-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <Link to="/"><Logo /></Link>
-          <Link to="/" className="text-sm text-gray-500 hover:text-[#0a9396] transition-all">← Back to home</Link>
+          <Link
+            to="/"
+            className="text-sm text-gray-500 hover:text-[#0a9396] transition-all"
+          >
+            ← Back to home
+          </Link>
         </div>
       </nav>
 
       <div className="flex-1 flex items-center justify-center px-6 py-12">
         <div className="grid md:grid-cols-2 bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden max-w-5xl w-full">
-
-          <div className="hidden md:flex flex-col justify-center px-10 py-12 text-white"
-            style={{ background: 'linear-gradient(135deg, #0a9396, #5ec4c6)' }}>
-            <h1 className="text-4xl font-bold leading-tight">Unlock every opportunity that matters.</h1>
+          <div
+            className="hidden md:flex flex-col justify-center px-10 py-12 text-white"
+            style={{ background: 'linear-gradient(135deg, #0a9396, #5ec4c6)' }}
+          >
+            <h1 className="text-4xl font-bold leading-tight">
+              Unlock every opportunity that matters.
+            </h1>
             <p className="mt-5 text-white/90 leading-relaxed">
               Browse scholarships, internships, competitions, hackathons and research opportunities built for Pakistani students.
             </p>
@@ -104,59 +189,114 @@ function AuthPage() {
 
             <form onSubmit={handleSubmit} className="mt-8 flex flex-col gap-4">
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">Email</label>
-                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                <label className="text-sm font-semibold text-gray-700 mb-1 block">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
+                  inputMode="email"
+                  spellCheck={false}
+                  autoCapitalize="none"
                   className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-[#0a9396]"
-                  placeholder="you@example.com" />
+                  placeholder="you@example.com"
+                />
               </div>
 
               {mode !== 'forgot' && (
                 <div>
-                  <label className="text-sm font-semibold text-gray-700 mb-1 block">Password</label>
-                  <input type="password" required minLength={6} value={password}
+                  <label className="text-sm font-semibold text-gray-700 mb-1 block">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={MIN_PASSWORD_LENGTH}
+                    value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                     className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-[#0a9396]"
-                    placeholder="At least 6 characters" />
+                    placeholder={
+                      mode === 'signup'
+                        ? `At least ${MIN_PASSWORD_LENGTH} characters`
+                        : 'Enter your password'
+                    }
+                  />
                 </div>
               )}
 
               {mode === 'signin' && (
-                <button type="button"
-                  onClick={() => { setMode('forgot'); setError(''); setMessage('') }}
-                  className="text-left text-xs text-[#0a9396] hover:underline -mt-2">
+                <button
+                  type="button"
+                  onClick={() => switchMode('forgot')}
+                  className="text-left text-xs text-[#0a9396] hover:underline -mt-2"
+                >
                   Forgot password?
                 </button>
               )}
 
               {error && (
-                <div className="text-sm text-red-500 bg-red-50 border border-red-100 rounded-xl px-4 py-3">{error}</div>
-              )}
-              {message && (
-                <div className="text-sm text-green-700 bg-green-50 border border-green-100 rounded-xl px-4 py-3">{message}</div>
+                <div className="text-sm text-red-500 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+                  {error}
+                </div>
               )}
 
-              <button type="submit" disabled={loading}
-                className="mt-2 bg-[#0a9396] hover:bg-[#007f82] text-white px-6 py-3 rounded-full font-semibold transition-all disabled:opacity-50">
-                {loading ? 'Please wait...' : mode === 'signin' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Send Reset Link'}
+              {message && (
+                <div className="text-sm text-green-700 bg-green-50 border border-green-100 rounded-xl px-4 py-3">
+                  {message}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="mt-2 bg-[#0a9396] hover:bg-[#007f82] text-white px-6 py-3 rounded-full font-semibold transition-all disabled:opacity-50"
+              >
+                {loading
+                  ? 'Please wait...'
+                  : mode === 'signin'
+                  ? 'Sign In'
+                  : mode === 'signup'
+                  ? 'Create Account'
+                  : 'Send Reset Link'}
               </button>
             </form>
 
             <div className="mt-6 text-sm text-gray-500">
               {mode === 'signin' && (
-                <>Don't have an account?{' '}
-                  <button onClick={() => { setMode('signup'); setError(''); setMessage('') }}
-                    className="text-[#0a9396] font-semibold hover:underline">Sign up</button>
+                <>
+                  Don&apos;t have an account?{' '}
+                  <button
+                    onClick={() => switchMode('signup')}
+                    className="text-[#0a9396] font-semibold hover:underline"
+                  >
+                    Sign up
+                  </button>
                 </>
               )}
+
               {mode === 'signup' && (
-                <>Already have an account?{' '}
-                  <button onClick={() => { setMode('signin'); setError(''); setMessage('') }}
-                    className="text-[#0a9396] font-semibold hover:underline">Sign in</button>
+                <>
+                  Already have an account?{' '}
+                  <button
+                    onClick={() => switchMode('signin')}
+                    className="text-[#0a9396] font-semibold hover:underline"
+                  >
+                    Sign in
+                  </button>
                 </>
               )}
+
               {mode === 'forgot' && (
-                <button onClick={() => { setMode('signin'); setError(''); setMessage('') }}
-                  className="text-[#0a9396] font-semibold hover:underline">← Back to sign in</button>
+                <button
+                  onClick={() => switchMode('signin')}
+                  className="text-[#0a9396] font-semibold hover:underline"
+                >
+                  ← Back to sign in
+                </button>
               )}
             </div>
           </div>
