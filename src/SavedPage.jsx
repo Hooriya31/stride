@@ -54,35 +54,29 @@ function formatDeadline(deadline) {
 function SavedCard({ savedRow, opportunity }) {
   const { unsaveOpportunity, updateSaved } = useSaved()
 
-  // ── Local optimistic status state ──────────────────────────────────────────
-  // Keeps UI snappy. If the DB update fails we roll back to the previous value.
+  // ── Local optimistic status — prevents glitch on status change ─────────────
   const [localStatus, setLocalStatus] = useState(savedRow.status || 'saved')
   const [statusLoading, setStatusLoading] = useState(false)
 
-  // ── Notes state ────────────────────────────────────────────────────────────
+  // ── Notes ──────────────────────────────────────────────────────────────────
   const [showNotes, setShowNotes] = useState(false)
   const [notes, setNotes] = useState(savedRow.notes || '')
   const [savingNotes, setSavingNotes] = useState(false)
   const [notesError, setNotesError] = useState('')
 
-  // ── Unsave state ───────────────────────────────────────────────────────────
+  // ── Unsave ─────────────────────────────────────────────────────────────────
   const [unsaving, setUnsaving] = useState(false)
   const [unsaveError, setUnsaveError] = useState('')
 
-  // Sync notes if parent savedRow.notes changes (e.g. after a successful save)
-  useEffect(() => {
-    setNotes(savedRow.notes || '')
-  }, [savedRow.notes])
+  // ── Share ──────────────────────────────────────────────────────────────────
+  const [copied, setCopied] = useState(false)
 
-  // Sync localStatus if parent savedRow.status changes from outside
-  useEffect(() => {
-    setLocalStatus(savedRow.status || 'saved')
-  }, [savedRow.status])
+  // Sync notes and status if parent updates (e.g. after successful save)
+  useEffect(() => { setNotes(savedRow.notes || '') }, [savedRow.notes])
+  useEffect(() => { setLocalStatus(savedRow.status || 'saved') }, [savedRow.status])
 
   const daysLeft = getDaysLeft(opportunity.deadline)
   const isExpired = daysLeft !== null && daysLeft < 0
-
-  // Urgent banner only for "not applied" items closing within 7 days
   const isUrgentNotApplied =
     localStatus === 'saved' &&
     daysLeft !== null &&
@@ -95,14 +89,14 @@ function SavedCard({ savedRow, opportunity }) {
     if (statusLoading || newStatus === localStatus) return
 
     const previous = localStatus
-    setLocalStatus(newStatus) // optimistic update — UI feels instant
+    setLocalStatus(newStatus) // optimistic
     setStatusLoading(true)
 
     try {
       await updateSaved(opportunity.id, { status: newStatus })
     } catch (err) {
       console.error('Status update failed:', err)
-      setLocalStatus(previous) // rollback on failure
+      setLocalStatus(previous) // rollback
     } finally {
       setStatusLoading(false)
     }
@@ -134,7 +128,27 @@ function SavedCard({ savedRow, opportunity }) {
     } catch (err) {
       console.error('Unsave failed:', err)
       setUnsaveError('Could not remove. Please try again.')
-      setUnsaving(false) // card stays visible so user sees error
+      setUnsaving(false)
+    }
+  }
+
+  async function handleShare() {
+    if (!opportunity.link) return
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: opportunity.title || 'Opportunity',
+          url: opportunity.link,
+        })
+      } else {
+        await navigator.clipboard.writeText(opportunity.link)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      }
+    } catch (err) {
+      // User cancelled share — fail silently
+      console.error('Share failed:', err)
     }
   }
 
@@ -159,23 +173,26 @@ function SavedCard({ savedRow, opportunity }) {
         </div>
       )}
 
-      {/* Top row */}
+      {/* Top row: badges + remove button */}
       <div className="flex justify-between items-start gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex gap-2 flex-wrap items-center mb-1">
+            {/* Type */}
             <span className="text-xs font-semibold text-[#0a9396] bg-[#0a939615] px-3 py-1 rounded-full">
               {opportunity.type || 'Opportunity'}
             </span>
 
-            {opportunity.verified && (
-              <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-full">
-                ✓ Verified
-              </span>
-            )}
-
+            {/* Featured */}
             {opportunity.featured && (
               <span className="text-xs font-semibold text-yellow-700 bg-yellow-50 px-2 py-1 rounded-full">
                 ★ Featured
+              </span>
+            )}
+
+            {/* Verified */}
+            {opportunity.verified && (
+              <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                ✓ Verified
               </span>
             )}
           </div>
@@ -210,23 +227,54 @@ function SavedCard({ savedRow, opportunity }) {
         {opportunity.description || 'No description available.'}
       </p>
 
-      {/* Deadline + location */}
-      <div className="flex gap-3 text-xs text-gray-400 flex-wrap">
-        {opportunity.deadline && (
-          <span>📅 {formatDeadline(opportunity.deadline)}</span>
-        )}
+      {/* Meta tags — location, city, discipline, level */}
+      <div className="flex gap-2 flex-wrap">
         {opportunity.location && (
-          <span>
+          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
             📍 {opportunity.location}
             {opportunity.city ? ` · ${opportunity.city}` : ''}
           </span>
         )}
+        {opportunity.discipline && (
+          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+            {opportunity.discipline}
+          </span>
+        )}
+        {opportunity.level && (
+          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+            {opportunity.level}
+          </span>
+        )}
       </div>
+
+      {/* Deadline */}
+      {opportunity.deadline && (
+        <p className="text-xs text-gray-400">
+          📅 {formatDeadline(opportunity.deadline)}
+          {daysLeft !== null && daysLeft >= 0 && (
+            <span
+              className={`ml-2 font-semibold px-2 py-0.5 rounded-full ${
+                daysLeft <= 7
+                  ? 'bg-red-100 text-red-600'
+                  : daysLeft <= 30
+                  ? 'bg-orange-100 text-orange-600'
+                  : 'bg-green-100 text-green-700'
+              }`}
+            >
+              {daysLeft === 0 ? 'Last day!' : `${daysLeft}d left`}
+            </span>
+          )}
+          {isExpired && (
+            <span className="ml-2 font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-400">
+              Expired
+            </span>
+          )}
+        </p>
+      )}
 
       {/* Status selector */}
       <div className="flex gap-2 flex-wrap items-center">
         <span className="text-xs text-gray-400 font-medium">Status:</span>
-
         {STATUS_OPTIONS.map((opt) => (
           <button
             key={opt.value}
@@ -248,14 +296,10 @@ function SavedCard({ savedRow, opportunity }) {
       <div>
         <button
           onClick={() => setShowNotes(!showNotes)}
-          className="text-xs text-[#0a9396] hover:underline"
           aria-expanded={showNotes}
+          className="text-xs text-[#0a9396] hover:underline"
         >
-          {showNotes
-            ? 'Hide notes'
-            : savedRow.notes
-            ? 'Edit notes'
-            : '+ Add private notes'}
+          {showNotes ? 'Hide notes' : savedRow.notes ? 'Edit notes' : '+ Add private notes'}
         </button>
 
         {!showNotes && savedRow.notes && (
@@ -293,7 +337,6 @@ function SavedCard({ savedRow, opportunity }) {
               >
                 {savingNotes ? 'Saving…' : 'Save notes'}
               </button>
-
               <button
                 onClick={() => {
                   setShowNotes(false)
@@ -309,8 +352,26 @@ function SavedCard({ savedRow, opportunity }) {
         )}
       </div>
 
-      {/* Footer — Apply link */}
-      <div className="pt-3 border-t border-gray-100">
+      {/* Footer: Share + Apply */}
+      <div className="pt-3 border-t border-gray-100 flex items-center gap-2">
+        {/* Share */}
+        <button
+          type="button"
+          onClick={handleShare}
+          disabled={!opportunity.link}
+          aria-label={copied ? 'Link copied!' : 'Share this opportunity'}
+          className={`text-sm px-3 py-2 rounded-full transition-all border ${
+            copied
+              ? 'border-[#0a9396] text-[#0a9396]'
+              : opportunity.link
+              ? 'border-gray-200 text-gray-500 hover:border-[#0a9396] hover:text-[#0a9396]'
+              : 'border-gray-100 text-gray-300 cursor-not-allowed'
+          }`}
+        >
+          {copied ? '✓ Copied' : 'Share'}
+        </button>
+
+        {/* Apply */}
         {opportunity.link ? (
           <a
             href={opportunity.link}
@@ -340,15 +401,10 @@ function SavedPage() {
   const [logoutConfirm, setLogoutConfirm] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
 
-  // Use ref to avoid stale closure warning without needing markUrgentSavedAsSeen
-  // to be wrapped in useCallback inside context
+  // Stable ref avoids stale closure lint warning without requiring useCallback in context
   const markSeenRef = useRef(markUrgentSavedAsSeen)
-  useEffect(() => {
-    markSeenRef.current = markUrgentSavedAsSeen
-  })
-  useEffect(() => {
-    markSeenRef.current?.()
-  }, [])
+  useEffect(() => { markSeenRef.current = markUrgentSavedAsSeen })
+  useEffect(() => { markSeenRef.current?.() }, [])
 
   async function handleLogout() {
     if (loggingOut) return
@@ -364,7 +420,7 @@ function SavedPage() {
     }
   }
 
-  // Count only "not applied" items closing within 7 days
+  // Only count "not applied" items closing within 7 days for the urgent badge
   const urgentCount = saved.filter((s) => {
     if (!s.opportunities) return false
     if (s.status !== 'saved') return false
