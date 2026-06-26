@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import Logo from './logo'
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const TYPE_OPTIONS = [
   'Scholarship',
   'Internship',
@@ -23,6 +25,10 @@ const LEVEL_OPTIONS = [
   'All levels',
 ]
 
+const PAGE_SIZE = 20
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function formatDate(dateString) {
   if (!dateString) return 'No date'
   const d = new Date(dateString)
@@ -35,7 +41,7 @@ function formatDate(dateString) {
 }
 
 function normalizeText(value) {
-  return value.trim().replace(/\s+/g, ' ')
+  return (value || '').trim().replace(/\s+/g, ' ')
 }
 
 function normalizeOptionalText(value) {
@@ -44,9 +50,8 @@ function normalizeOptionalText(value) {
 }
 
 function normalizeUrl(value) {
-  const trimmed = value.trim()
+  const trimmed = (value || '').trim()
   if (!trimmed) return null
-
   try {
     const url = new URL(trimmed)
     return url.toString()
@@ -56,7 +61,7 @@ function normalizeUrl(value) {
 }
 
 function toTitleCase(value) {
-  return value
+  return (value || '')
     .toLowerCase()
     .split(' ')
     .filter(Boolean)
@@ -66,35 +71,162 @@ function toTitleCase(value) {
 
 function isFutureOrToday(dateString) {
   if (!dateString) return false
-
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-
   const selected = new Date(`${dateString}T00:00:00`)
   if (Number.isNaN(selected.getTime())) return false
-
   return selected >= today
 }
 
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+/**
+ * Inline confirmation panel — replaces window.confirm everywhere.
+ * Used for reject, delete, and logout.
+ */
+function ConfirmBox({ message, onConfirm, onCancel, loading, confirmLabel = 'Confirm', danger = true }) {
+  return (
+    <div className={`rounded-2xl border p-3 mt-1 ${danger ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-200'}`}>
+      <p className={`text-xs font-semibold mb-2 ${danger ? 'text-red-600' : 'text-gray-700'}`}>
+        {message}
+      </p>
+      <div className="flex gap-2">
+        <button
+          onClick={onConfirm}
+          disabled={loading}
+          className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all disabled:opacity-50 ${
+            danger
+              ? 'bg-red-500 text-white hover:bg-red-600'
+              : 'bg-[#0a9396] text-white hover:bg-[#007f82]'
+          }`}
+        >
+          {loading ? 'Working...' : confirmLabel}
+        </button>
+        <button
+          onClick={onCancel}
+          className="bg-white text-gray-500 px-3 py-1.5 rounded-full text-xs font-semibold border border-gray-200 hover:bg-gray-50 transition-all"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Search + filter bar shared between Pending and Approved tabs.
+ */
+function FilterBar({ search, onSearch, typeFilter, onType, sortBy, onSort, extraFilters, onExtra }) {
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6 flex flex-col gap-3">
+      {/* Search */}
+      <input
+        type="search"
+        placeholder="Search by title, organization, or discipline…"
+        value={search}
+        onChange={(e) => onSearch(e.target.value)}
+        aria-label="Search opportunities"
+        className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:border-[#0a9396]"
+      />
+
+      {/* Row 2: filters + sort */}
+      <div className="flex flex-wrap gap-2">
+        {/* Type */}
+        <select
+          value={typeFilter}
+          onChange={(e) => onType(e.target.value)}
+          aria-label="Filter by type"
+          className="px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:border-[#0a9396]"
+        >
+          <option value="">All types</option>
+          {TYPE_OPTIONS.map((t) => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </select>
+
+        {/* Extra toggles (featured / verified — only on approved) */}
+        {extraFilters && (
+          <>
+            <button
+              onClick={() => onExtra('featured')}
+              aria-pressed={extraFilters.featured}
+              className={`px-3 py-2 rounded-lg text-sm font-semibold border transition-all ${
+                extraFilters.featured
+                  ? 'bg-yellow-100 text-yellow-800 border-yellow-200'
+                  : 'bg-white text-gray-500 border-gray-200 hover:border-yellow-300'
+              }`}
+            >
+              ★ Featured
+            </button>
+            <button
+              onClick={() => onExtra('verified')}
+              aria-pressed={extraFilters.verified}
+              className={`px-3 py-2 rounded-lg text-sm font-semibold border transition-all ${
+                extraFilters.verified
+                  ? 'bg-green-100 text-green-800 border-green-200'
+                  : 'bg-white text-gray-500 border-gray-200 hover:border-green-300'
+              }`}
+            >
+              ✓ Verified
+            </button>
+            <button
+              onClick={() => onExtra('user_submitted')}
+              aria-pressed={extraFilters.user_submitted}
+              className={`px-3 py-2 rounded-lg text-sm font-semibold border transition-all ${
+                extraFilters.user_submitted
+                  ? 'bg-orange-100 text-orange-800 border-orange-200'
+                  : 'bg-white text-gray-500 border-gray-200 hover:border-orange-300'
+              }`}
+            >
+              User submitted
+            </button>
+          </>
+        )}
+
+        {/* Sort */}
+        <select
+          value={sortBy}
+          onChange={(e) => onSort(e.target.value)}
+          aria-label="Sort opportunities"
+          className="px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:border-[#0a9396] ml-auto"
+        >
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+          <option value="deadline">Deadline soonest</option>
+          <option value="az">Title A → Z</option>
+        </select>
+      </div>
+    </div>
+  )
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
 function AdminPanel() {
+  // Auth
   const [authed, setAuthed] = useState(false)
   const [checkingAuth, setCheckingAuth] = useState(true)
-
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [authLoading, setAuthLoading] = useState(false)
   const [authError, setAuthError] = useState('')
 
+  // Data
   const [pending, setPending] = useState([])
   const [approved, setApproved] = useState([])
   const [activeTab, setActiveTab] = useState('pending')
   const [loading, setLoading] = useState(true)
-
   const [panelError, setPanelError] = useState('')
-  const [actionLoadingId, setActionLoadingId] = useState(null)
-  const [deleteConfirm, setDeleteConfirm] = useState(null)
 
-  // EDIT MODAL STATE
+  // Action loading — keyed string so multiple different buttons never clash
+  const [actionLoadingId, setActionLoadingId] = useState(null)
+
+  // Inline confirm states (replaces window.confirm entirely)
+  const [deleteConfirm, setDeleteConfirm] = useState(null)   // approved delete
+  const [rejectConfirm, setRejectConfirm] = useState(null)   // pending reject
+  const [logoutConfirm, setLogoutConfirm] = useState(false)
+
+  // Edit modal
   const [editingItem, setEditingItem] = useState(null)
   const [editForm, setEditForm] = useState({
     title: '',
@@ -114,54 +246,72 @@ function AdminPanel() {
   const [editError, setEditError] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
 
+  // ── Search / filter / sort / pagination ──
+  const [pendingSearch, setPendingSearch] = useState('')
+  const [pendingType, setPendingType] = useState('')
+  const [pendingSort, setPendingSort] = useState('newest')
+  const [pendingPage, setPendingPage] = useState(1)
+
+  const [approvedSearch, setApprovedSearch] = useState('')
+  const [approvedType, setApprovedType] = useState('')
+  const [approvedSort, setApprovedSort] = useState('newest')
+  const [approvedPage, setApprovedPage] = useState(1)
+  const [approvedExtra, setApprovedExtra] = useState({
+    featured: false,
+    verified: false,
+    user_submitted: false,
+  })
+
+  // ── On mount ──────────────────────────────────────────────────────────────
+
   useEffect(() => {
     checkAdminSession()
   }, [])
+
+  // Reset pagination when filters change
+  useEffect(() => { setPendingPage(1) }, [pendingSearch, pendingType, pendingSort])
+  useEffect(() => { setApprovedPage(1) }, [approvedSearch, approvedType, approvedSort, approvedExtra])
+
+  // ── Auth ──────────────────────────────────────────────────────────────────
 
   async function checkAdminSession() {
     setCheckingAuth(true)
     setPanelError('')
 
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession()
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
-    if (sessionError) {
-      console.error('Session error:', sessionError.message)
+      if (sessionError) {
+        console.error('Session error:', sessionError.message)
+        setAuthed(false)
+        return
+      }
+
+      if (!session?.user) {
+        setAuthed(false)
+        return
+      }
+
+      const { data: adminRow, error } = await supabase
+        .from('admins')
+        .select('id')
+        .eq('id', session.user.id)
+        .maybeSingle()
+
+      if (error || !adminRow) {
+        console.error('Admin check failed:', error?.message)
+        setAuthed(false)
+        return
+      }
+
+      setAuthed(true)
+      await fetchAll()
+    } catch (err) {
+      console.error('Unexpected auth error:', err)
       setAuthed(false)
+    } finally {
       setCheckingAuth(false)
-      return
     }
-
-    if (!session?.user) {
-      setAuthed(false)
-      setCheckingAuth(false)
-      return
-    }
-
-    const { data: adminRow, error } = await supabase
-      .from('admins')
-      .select('id')
-      .eq('id', session.user.id)
-      .maybeSingle()
-
-    if (error) {
-      console.error('Admin check error:', error.message)
-      setAuthed(false)
-      setCheckingAuth(false)
-      return
-    }
-
-    if (!adminRow) {
-      setAuthed(false)
-      setCheckingAuth(false)
-      return
-    }
-
-    setAuthed(true)
-    await fetchAll()
-    setCheckingAuth(false)
   }
 
   async function handleAdminLogin(e) {
@@ -172,86 +322,175 @@ function AdminPanel() {
     setAuthError('')
     setPanelError('')
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    })
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      })
 
-    if (error) {
-      setAuthError(error.message)
+      if (error) {
+        setAuthError(error.message)
+        return
+      }
+
+      const user = data?.user
+      if (!user) {
+        setAuthError('Unable to sign in.')
+        return
+      }
+
+      const { data: adminRow, error: adminError } = await supabase
+        .from('admins')
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (adminError || !adminRow) {
+        await supabase.auth.signOut()
+        setAuthError('This account is not allowed to access the admin panel.')
+        return
+      }
+
+      setAuthed(true)
+      setEmail('')
+      setPassword('')
+      await fetchAll()
+    } catch (err) {
+      console.error('Login error:', err)
+      setAuthError('An unexpected error occurred. Please try again.')
+    } finally {
       setAuthLoading(false)
-      return
     }
-
-    const user = data?.user
-    if (!user) {
-      setAuthError('Unable to sign in.')
-      setAuthLoading(false)
-      return
-    }
-
-    const { data: adminRow, error: adminError } = await supabase
-      .from('admins')
-      .select('id')
-      .eq('id', user.id)
-      .maybeSingle()
-
-    if (adminError) {
-      console.error('Admin check error:', adminError.message)
-      await supabase.auth.signOut()
-      setAuthError('Could not verify admin access.')
-      setAuthLoading(false)
-      return
-    }
-
-    if (!adminRow) {
-      await supabase.auth.signOut()
-      setAuthError('This account is not allowed to access the admin panel.')
-      setAuthLoading(false)
-      return
-    }
-
-    setAuthed(true)
-    setEmail('')
-    setPassword('')
-    await fetchAll()
-    setAuthLoading(false)
   }
+
+  async function handleLogout() {
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) {
+        console.error('Logout error:', error.message)
+        return
+      }
+      setAuthed(false)
+      setPending([])
+      setApproved([])
+      setActiveTab('pending')
+      setPanelError('')
+      setDeleteConfirm(null)
+      setRejectConfirm(null)
+      setEditingItem(null)
+      setLogoutConfirm(false)
+    } catch (err) {
+      console.error('Unexpected logout error:', err)
+    }
+  }
+
+  // ── Data fetching ─────────────────────────────────────────────────────────
 
   async function fetchAll() {
     setLoading(true)
     setPanelError('')
 
-    const pendingQuery = supabase
-      .from('opportunities')
-      .select('*')
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false })
+    try {
+      const [pendingRes, approvedRes] = await Promise.all([
+        supabase
+          .from('opportunities')
+          .select('*')
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('opportunities')
+          .select('*')
+          .eq('status', 'approved')
+          .order('created_at', { ascending: false }),
+      ])
 
-    const approvedQuery = supabase
-      .from('opportunities')
-      .select('*')
-      .eq('status', 'approved')
-      .order('created_at', { ascending: false })
+      if (pendingRes.error) console.error('Error fetching pending:', pendingRes.error.message)
+      if (approvedRes.error) console.error('Error fetching approved:', approvedRes.error.message)
 
-    const [pendingRes, approvedRes] = await Promise.all([pendingQuery, approvedQuery])
+      if (pendingRes.error || approvedRes.error) {
+        setPanelError('Could not load admin data. Please refresh and try again.')
+      }
 
-    if (pendingRes.error) {
-      console.error('Error fetching pending:', pendingRes.error.message)
+      setPending(pendingRes.data || [])
+      setApproved(approvedRes.data || [])
+    } catch (err) {
+      console.error('Unexpected fetch error:', err)
+      setPanelError('An unexpected error occurred while loading data.')
+    } finally {
+      setLoading(false)
     }
-
-    if (approvedRes.error) {
-      console.error('Error fetching approved:', approvedRes.error.message)
-    }
-
-    if (pendingRes.error || approvedRes.error) {
-      setPanelError('Could not load admin data. Please refresh and try again.')
-    }
-
-    setPending(pendingRes.data || [])
-    setApproved(approvedRes.data || [])
-    setLoading(false)
   }
+
+  // ── Filtering + sorting + pagination (memoized) ───────────────────────────
+
+  function applyFilters(list, search, type, sort) {
+    let result = [...list]
+
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      result = result.filter(
+        (o) =>
+          (o.title || '').toLowerCase().includes(q) ||
+          (o.organization || '').toLowerCase().includes(q) ||
+          (o.discipline || '').toLowerCase().includes(q)
+      )
+    }
+
+    if (type) {
+      result = result.filter((o) => o.type === type)
+    }
+
+    switch (sort) {
+      case 'oldest':
+        result.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+        break
+      case 'deadline':
+        result.sort((a, b) => {
+          if (!a.deadline) return 1
+          if (!b.deadline) return -1
+          return new Date(a.deadline) - new Date(b.deadline)
+        })
+        break
+      case 'az':
+        result.sort((a, b) => (a.title || '').localeCompare(b.title || ''))
+        break
+      default: // newest
+        result.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    }
+
+    return result
+  }
+
+  const filteredPending = useMemo(() => {
+    return applyFilters(pending, pendingSearch, pendingType, pendingSort)
+  }, [pending, pendingSearch, pendingType, pendingSort])
+
+  const filteredApproved = useMemo(() => {
+    let result = applyFilters(approved, approvedSearch, approvedType, approvedSort)
+    if (approvedExtra.featured) result = result.filter((o) => o.featured)
+    if (approvedExtra.verified) result = result.filter((o) => o.verified)
+    if (approvedExtra.user_submitted) result = result.filter((o) => o.submitted_by_user)
+    return result
+  }, [approved, approvedSearch, approvedType, approvedSort, approvedExtra])
+
+  // Pagination slices
+  const pendingPageCount = Math.ceil(filteredPending.length / PAGE_SIZE)
+  const approvedPageCount = Math.ceil(filteredApproved.length / PAGE_SIZE)
+
+  const pendingVisible = filteredPending.slice(
+    (pendingPage - 1) * PAGE_SIZE,
+    pendingPage * PAGE_SIZE
+  )
+  const approvedVisible = filteredApproved.slice(
+    (approvedPage - 1) * PAGE_SIZE,
+    approvedPage * PAGE_SIZE
+  )
+
+  function toggleApprovedExtra(key) {
+    setApprovedExtra((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  // ── Edit modal ────────────────────────────────────────────────────────────
 
   function openEditModal(item) {
     setEditingItem(item)
@@ -289,284 +528,281 @@ function AdminPanel() {
   }
 
   async function saveEdit() {
-    if (!editingItem) return
-    if (savingEdit) return
+    if (!editingItem || savingEdit) return
 
     setSavingEdit(true)
     setEditError('')
     setPanelError('')
 
-    const title = normalizeText(editForm.title)
-    const organization = normalizeText(editForm.organization)
-    const type = editForm.type.trim()
-    const deadline = editForm.deadline
-    const description = normalizeText(editForm.description)
-    const location = editForm.location.trim()
+    try {
+      const title = normalizeText(editForm.title)
+      const organization = normalizeText(editForm.organization)
+      const type = editForm.type.trim()
+      const deadline = editForm.deadline
+      const description = normalizeText(editForm.description)
+      const location = editForm.location.trim()
+      const link = normalizeUrl(editForm.link)
+      const sourceUrl = editForm.source_url.trim() ? normalizeUrl(editForm.source_url) : null
+      const rawCity = normalizeOptionalText(editForm.city)
+      const city = rawCity ? toTitleCase(rawCity) : null
+      const rawDiscipline = normalizeOptionalText(editForm.discipline)
+      const discipline = rawDiscipline ? toTitleCase(rawDiscipline) : null
+      const level = editForm.level.trim() || null
 
-    const link = normalizeUrl(editForm.link)
-    const sourceUrl = editForm.source_url.trim()
-      ? normalizeUrl(editForm.source_url)
-      : null
+      // Validation
+      if (!title) { setEditError('Please enter an opportunity title.'); return }
+      if (!organization) { setEditError('Please enter the organization name.'); return }
+      if (!TYPE_OPTIONS.includes(type)) { setEditError('Please select a valid opportunity type.'); return }
+      if (!deadline || !isFutureOrToday(deadline)) { setEditError('Please choose a valid deadline that is today or later.'); return }
+      if (!description || description.length < 20) { setEditError('Description should be at least 20 characters.'); return }
+      if (!link) { setEditError('Please enter a valid application link (must start with https://).'); return }
+      if (!LOCATION_OPTIONS.includes(location)) { setEditError('Please select a valid location type.'); return }
+      if (editForm.source_url.trim() && !sourceUrl) { setEditError('Source URL must be a valid link if provided.'); return }
+      if (level && !LEVEL_OPTIONS.includes(level)) { setEditError('Please select a valid level.'); return }
 
-    const city = normalizeOptionalText(editForm.city)
-      ? toTitleCase(normalizeOptionalText(editForm.city))
-      : null
+      const updates = {
+        title,
+        organization,
+        type,
+        deadline,
+        description,
+        link,
+        location,
+        city,
+        discipline,
+        level,
+        source_url: sourceUrl,
+        verified: !!editForm.verified,
+        featured: !!editForm.featured,
+      }
 
-    const discipline = normalizeOptionalText(editForm.discipline)
-      ? toTitleCase(normalizeOptionalText(editForm.discipline))
-      : null
+      const { error } = await supabase
+        .from('opportunities')
+        .update(updates)
+        .eq('id', editingItem.id)
 
-    const level = editForm.level.trim() || null
+      if (error) {
+        console.error('Edit save error:', error.message)
+        setEditError(error.message || 'Could not save changes.')
+        return
+      }
 
-    if (!title) {
-      setEditError('Please enter an opportunity title.')
+      // Update local state
+      const patch = (list) =>
+        list.map((o) => (o.id === editingItem.id ? { ...o, ...updates } : o))
+      setPending(patch)
+      setApproved(patch)
+      closeEditModal()
+    } catch (err) {
+      console.error('Unexpected save error:', err)
+      setEditError('An unexpected error occurred. Please try again.')
+    } finally {
       setSavingEdit(false)
-      return
     }
-
-    if (!organization) {
-      setEditError('Please enter the organization name.')
-      setSavingEdit(false)
-      return
-    }
-
-    if (!TYPE_OPTIONS.includes(type)) {
-      setEditError('Please select a valid opportunity type.')
-      setSavingEdit(false)
-      return
-    }
-
-    if (!deadline || !isFutureOrToday(deadline)) {
-      setEditError('Please choose a valid deadline that is today or later.')
-      setSavingEdit(false)
-      return
-    }
-
-    if (!description || description.length < 20) {
-      setEditError('Description should be at least 20 characters.')
-      setSavingEdit(false)
-      return
-    }
-
-    if (!link) {
-      setEditError('Please enter a valid application link.')
-      setSavingEdit(false)
-      return
-    }
-
-    if (!LOCATION_OPTIONS.includes(location)) {
-      setEditError('Please select a valid location type.')
-      setSavingEdit(false)
-      return
-    }
-
-    if (editForm.source_url.trim() && !sourceUrl) {
-      setEditError('Source URL must be a valid link if provided.')
-      setSavingEdit(false)
-      return
-    }
-
-    if (level && !LEVEL_OPTIONS.includes(level)) {
-      setEditError('Please select a valid level.')
-      setSavingEdit(false)
-      return
-    }
-
-    const updates = {
-      title,
-      organization,
-      type,
-      deadline,
-      description,
-      link,
-      location,
-      city,
-      discipline,
-      level,
-      source_url: sourceUrl,
-      verified: !!editForm.verified,
-      featured: !!editForm.featured,
-    }
-
-    const { error } = await supabase
-      .from('opportunities')
-      .update(updates)
-      .eq('id', editingItem.id)
-
-    setSavingEdit(false)
-
-    if (error) {
-      console.error('Edit save error:', error.message)
-      setEditError(error.message || 'Could not save changes.')
-      return
-    }
-
-    setPending((prev) =>
-      prev.map((o) => (o.id === editingItem.id ? { ...o, ...updates } : o))
-    )
-
-    setApproved((prev) =>
-      prev.map((o) => (o.id === editingItem.id ? { ...o, ...updates } : o))
-    )
-
-    closeEditModal()
   }
 
+  // ── Actions ───────────────────────────────────────────────────────────────
+
   async function approveOpportunity(item) {
-    setActionLoadingId(item.id)
+    if (actionLoadingId) return
+    setActionLoadingId(`approve-${item.id}`)
     setPanelError('')
 
-    const { error } = await supabase
-      .from('opportunities')
-      .update({
-        status: 'approved',
-        verified: item.verified ?? false,
-        featured: item.featured ?? false,
-      })
-      .eq('id', item.id)
+    try {
+      const { error } = await supabase
+        .from('opportunities')
+        .update({
+          status: 'approved',
+          verified: item.verified ?? false,
+          featured: item.featured ?? false,
+        })
+        .eq('id', item.id)
 
-    setActionLoadingId(null)
+      if (error) {
+        console.error('Approve error:', error.message)
+        setPanelError(error.message || 'Could not approve this opportunity.')
+        return
+      }
 
-    if (error) {
-      console.error('Approve error:', error.message)
-      setPanelError(error.message || 'Could not approve this opportunity.')
-      return
+      setPending((prev) => prev.filter((o) => o.id !== item.id))
+      setApproved((prev) => [{ ...item, status: 'approved' }, ...prev])
+    } catch (err) {
+      console.error('Unexpected approve error:', err)
+      setPanelError('An unexpected error occurred.')
+    } finally {
+      setActionLoadingId(null)
     }
-
-    setPending((prev) => prev.filter((o) => o.id !== item.id))
-    setApproved((prev) => [{ ...item, status: 'approved' }, ...prev])
   }
 
   async function rejectOpportunity(id) {
-    const confirmed = window.confirm('Reject and delete this pending submission?')
-    if (!confirmed) return
-
-    setActionLoadingId(id)
+    if (actionLoadingId) return
+    setActionLoadingId(`reject-${id}`)
     setPanelError('')
 
-    const { error } = await supabase.from('opportunities').delete().eq('id', id)
+    try {
+      const { error } = await supabase.from('opportunities').delete().eq('id', id)
 
-    setActionLoadingId(null)
+      if (error) {
+        console.error('Reject error:', error.message)
+        setPanelError(error.message || 'Could not reject this opportunity.')
+        return
+      }
 
-    if (error) {
-      console.error('Reject error:', error.message)
-      setPanelError(error.message || 'Could not reject this opportunity.')
-      return
+      setPending((prev) => prev.filter((o) => o.id !== id))
+      setRejectConfirm(null)
+    } catch (err) {
+      console.error('Unexpected reject error:', err)
+      setPanelError('An unexpected error occurred.')
+    } finally {
+      setActionLoadingId(null)
     }
-
-    setPending((prev) => prev.filter((o) => o.id !== id))
   }
 
   async function deleteApproved(id) {
-    setActionLoadingId(id)
+    if (actionLoadingId) return
+    setActionLoadingId(`delete-${id}`)
     setPanelError('')
 
-    const { error } = await supabase.from('opportunities').delete().eq('id', id)
+    try {
+      const { error } = await supabase.from('opportunities').delete().eq('id', id)
 
-    setActionLoadingId(null)
+      if (error) {
+        console.error('Delete error:', error.message)
+        setPanelError(error.message || 'Could not delete this opportunity.')
+        return
+      }
 
-    if (error) {
-      console.error('Delete error:', error.message)
-      setPanelError(error.message || 'Could not delete this opportunity.')
-      return
+      setApproved((prev) => prev.filter((o) => o.id !== id))
+      setDeleteConfirm(null)
+    } catch (err) {
+      console.error('Unexpected delete error:', err)
+      setPanelError('An unexpected error occurred.')
+    } finally {
+      setActionLoadingId(null)
     }
-
-    setApproved((prev) => prev.filter((o) => o.id !== id))
-    setDeleteConfirm(null)
   }
 
   async function moveBackToPending(item) {
-    setActionLoadingId(item.id)
+    if (actionLoadingId) return
+    setActionLoadingId(`move-${item.id}`)
     setPanelError('')
 
-    const { error } = await supabase
-      .from('opportunities')
-      .update({ status: 'pending' })
-      .eq('id', item.id)
+    try {
+      const { error } = await supabase
+        .from('opportunities')
+        .update({ status: 'pending' })
+        .eq('id', item.id)
 
-    setActionLoadingId(null)
+      if (error) {
+        console.error('Move back error:', error.message)
+        setPanelError(error.message || 'Could not move this opportunity back to pending.')
+        return
+      }
 
-    if (error) {
-      console.error('Move back error:', error.message)
-      setPanelError(error.message || 'Could not move this opportunity back to pending.')
-      return
+      setApproved((prev) => prev.filter((o) => o.id !== item.id))
+      setPending((prev) => [{ ...item, status: 'pending' }, ...prev])
+    } catch (err) {
+      console.error('Unexpected move error:', err)
+      setPanelError('An unexpected error occurred.')
+    } finally {
+      setActionLoadingId(null)
     }
-
-    setApproved((prev) => prev.filter((o) => o.id !== item.id))
-    setPending((prev) => [{ ...item, status: 'pending' }, ...prev])
   }
 
   async function toggleField(item, field) {
+    if (actionLoadingId) return
     setActionLoadingId(`${field}-${item.id}`)
     setPanelError('')
 
-    const nextValue = !item[field]
+    try {
+      const nextValue = !item[field]
 
-    const { error } = await supabase
-      .from('opportunities')
-      .update({ [field]: nextValue })
-      .eq('id', item.id)
+      const { error } = await supabase
+        .from('opportunities')
+        .update({ [field]: nextValue })
+        .eq('id', item.id)
 
-    setActionLoadingId(null)
+      if (error) {
+        console.error(`Toggle ${field} error:`, error.message)
+        setPanelError(error.message || `Could not update ${field}.`)
+        return
+      }
 
-    if (error) {
-      console.error(`Toggle ${field} error:`, error.message)
-      setPanelError(error.message || `Could not update ${field}.`)
-      return
-    }
+      const patch = (list) =>
+        list.map((o) => (o.id === item.id ? { ...o, [field]: nextValue } : o))
+      setApproved(patch)
+      setPending(patch)
 
-    setApproved((prev) =>
-      prev.map((o) => (o.id === item.id ? { ...o, [field]: nextValue } : o))
-    )
-
-    setPending((prev) =>
-      prev.map((o) => (o.id === item.id ? { ...o, [field]: nextValue } : o))
-    )
-
-    if (editingItem?.id === item.id) {
-      setEditForm((prev) => ({
-        ...prev,
-        [field]: nextValue,
-      }))
+      if (editingItem?.id === item.id) {
+        setEditForm((prev) => ({ ...prev, [field]: nextValue }))
+      }
+    } catch (err) {
+      console.error(`Unexpected toggle error:`, err)
+      setPanelError('An unexpected error occurred.')
+    } finally {
+      setActionLoadingId(null)
     }
   }
 
-  async function handleLogout() {
-    const confirmed = window.confirm('Are you sure you want to log out of the admin panel?')
-    if (!confirmed) return
-
-    const { error } = await supabase.auth.signOut()
-
-    if (error) {
-      console.error('Logout error:', error.message)
-      return
-    }
-
-    setAuthed(false)
-    setPending([])
-    setApproved([])
-    setActiveTab('pending')
-    setPanelError('')
-    setDeleteConfirm(null)
-    setEditingItem(null)
-  }
+  // ── Derived counts ────────────────────────────────────────────────────────
 
   const pendingCount = pending.length
   const approvedCount = approved.length
 
   const pendingHeading = useMemo(() => {
-    if (pendingCount === 0) return 'No pending submissions'
-    if (pendingCount === 1) return '1 submission waiting for review'
-    return `${pendingCount} submissions waiting for review`
-  }, [pendingCount])
+    const total = filteredPending.length
+    const showing = pendingVisible.length
+    if (total === 0 && (pendingSearch || pendingType)) return 'No submissions match your filters'
+    if (total === 0) return 'No pending submissions'
+    if (total !== pendingCount) return `${showing} of ${total} matching (${pendingCount} total)`
+    if (total === 1) return '1 submission waiting for review'
+    return `${total} submissions waiting for review`
+  }, [filteredPending.length, pendingVisible.length, pendingCount, pendingSearch, pendingType])
+
+  // ── Pagination component ──────────────────────────────────────────────────
+
+  function Pagination({ page, pageCount, onPage }) {
+    if (pageCount <= 1) return null
+    return (
+      <div className="flex items-center justify-center gap-2 mt-6">
+        <button
+          onClick={() => onPage(page - 1)}
+          disabled={page === 1}
+          aria-label="Previous page"
+          className="px-4 py-2 rounded-full text-sm font-semibold bg-white border border-gray-200 text-gray-500 hover:border-[#0a9396] disabled:opacity-40 transition-all"
+        >
+          ← Prev
+        </button>
+        <span className="text-sm text-gray-500 px-2">
+          Page {page} of {pageCount}
+        </span>
+        <button
+          onClick={() => onPage(page + 1)}
+          disabled={page === pageCount}
+          aria-label="Next page"
+          className="px-4 py-2 rounded-full text-sm font-semibold bg-white border border-gray-200 text-gray-500 hover:border-[#0a9396] disabled:opacity-40 transition-all"
+        >
+          Next →
+        </button>
+      </div>
+    )
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Render: loading auth check
+  // ─────────────────────────────────────────────────────────────────────────
 
   if (checkingAuth) {
     return (
       <div className="min-h-screen bg-[#f0fafa] flex items-center justify-center">
-        <p className="text-gray-500">Checking admin access...</p>
+        <p className="text-gray-500">Checking admin access…</p>
       </div>
     )
   }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Render: login form
+  // ─────────────────────────────────────────────────────────────────────────
 
   if (!authed) {
     return (
@@ -585,8 +821,9 @@ function AdminPanel() {
               placeholder="Admin email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:border-[#0a9396]"
+              autoComplete="email"
               required
+              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:border-[#0a9396]"
             />
 
             <input
@@ -594,12 +831,13 @@ function AdminPanel() {
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:border-[#0a9396]"
+              autoComplete="current-password"
               required
+              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:border-[#0a9396]"
             />
 
             {authError && (
-              <div className="text-red-500 text-sm bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+              <div role="alert" className="text-red-500 text-sm bg-red-50 border border-red-100 rounded-xl px-4 py-3">
                 {authError}
               </div>
             )}
@@ -609,7 +847,7 @@ function AdminPanel() {
               disabled={authLoading}
               className="w-full bg-[#0a9396] text-white py-2.5 rounded-full font-semibold hover:bg-[#007f82] transition-all disabled:opacity-50"
             >
-              {authLoading ? 'Signing in...' : 'Login'}
+              {authLoading ? 'Signing in…' : 'Login'}
             </button>
           </form>
         </div>
@@ -617,8 +855,13 @@ function AdminPanel() {
     )
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Render: admin panel
+  // ─────────────────────────────────────────────────────────────────────────
+
   return (
     <div className="min-h-screen bg-[#f0fafa]">
+      {/* Nav */}
       <nav className="bg-white shadow-sm px-6 md:px-10 py-4">
         <div className="flex items-center justify-between max-w-6xl mx-auto">
           <Logo />
@@ -627,17 +870,37 @@ function AdminPanel() {
             <a href="/" className="text-sm text-gray-500 hover:text-[#0a9396]">
               ← Back to Stride
             </a>
-            <button
-              onClick={handleLogout}
-              className="text-sm text-red-500 hover:text-red-600 font-medium"
-            >
-              Logout
-            </button>
+
+            {logoutConfirm ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">Log out?</span>
+                <button
+                  onClick={handleLogout}
+                  className="text-xs font-semibold text-red-500 hover:text-red-600"
+                >
+                  Yes
+                </button>
+                <button
+                  onClick={() => setLogoutConfirm(false)}
+                  className="text-xs font-semibold text-gray-400 hover:text-gray-600"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setLogoutConfirm(true)}
+                className="text-sm text-red-500 hover:text-red-600 font-medium"
+              >
+                Logout
+              </button>
+            )}
           </div>
         </div>
       </nav>
 
       <div className="max-w-5xl mx-auto px-6 py-12">
+        {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Admin Panel</h1>
           <p className="text-gray-500 text-sm mt-2">
@@ -645,15 +908,18 @@ function AdminPanel() {
           </p>
         </div>
 
+        {/* Panel-level error */}
         {panelError && (
-          <div className="mb-6 rounded-2xl bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-3">
+          <div role="alert" className="mb-6 rounded-2xl bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-3">
             {panelError}
           </div>
         )}
 
+        {/* Tab bar */}
         <div className="flex flex-wrap gap-2 mb-8">
           <button
             onClick={() => setActiveTab('pending')}
+            aria-pressed={activeTab === 'pending'}
             className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${
               activeTab === 'pending'
                 ? 'bg-[#0a9396] text-white'
@@ -665,6 +931,7 @@ function AdminPanel() {
 
           <button
             onClick={() => setActiveTab('approved')}
+            aria-pressed={activeTab === 'approved'}
             className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${
               activeTab === 'approved'
                 ? 'bg-[#0a9396] text-white'
@@ -677,349 +944,400 @@ function AdminPanel() {
           <button
             onClick={fetchAll}
             disabled={loading}
+            aria-label="Refresh data"
             className="px-5 py-2 rounded-full text-sm font-semibold transition-all bg-white text-gray-500 border border-gray-200 hover:border-[#0a9396] disabled:opacity-50"
           >
-            {loading ? 'Refreshing...' : 'Refresh'}
+            {loading ? 'Refreshing…' : 'Refresh'}
           </button>
         </div>
 
+        {/* ── PENDING TAB ─────────────────────────────────────────────────── */}
         {loading ? (
           <div className="bg-white rounded-2xl p-10 border border-gray-100 shadow-sm text-center text-gray-500">
-            Loading admin data...
+            Loading admin data…
           </div>
         ) : activeTab === 'pending' ? (
           <>
-            <div className="mb-6">
+            <div className="mb-4">
               <h2 className="text-2xl font-bold text-gray-900">Pending Submissions</h2>
               <p className="text-gray-500 text-sm mt-1">{pendingHeading}</p>
             </div>
 
-            {pending.length === 0 ? (
+            <FilterBar
+              search={pendingSearch}
+              onSearch={setPendingSearch}
+              typeFilter={pendingType}
+              onType={setPendingType}
+              sortBy={pendingSort}
+              onSort={setPendingSort}
+            />
+
+            {filteredPending.length === 0 ? (
               <div className="bg-white rounded-2xl p-10 text-center border border-gray-100 shadow-sm">
-                <p className="text-gray-400 text-lg font-semibold">No pending submissions</p>
-                <p className="text-gray-400 text-sm mt-2">All caught up.</p>
+                <p className="text-gray-400 text-lg font-semibold">
+                  {pendingSearch || pendingType ? 'No submissions match your filters' : 'No pending submissions'}
+                </p>
+                <p className="text-gray-400 text-sm mt-2">
+                  {pendingSearch || pendingType ? 'Try clearing your search or filter.' : 'All caught up.'}
+                </p>
               </div>
             ) : (
-              <div className="flex flex-col gap-4">
-                {pending.map((o) => (
-                  <div
-                    key={o.id}
-                    className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm"
-                  >
-                    <div className="flex flex-col gap-5 lg:flex-row lg:justify-between lg:items-start">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap gap-2 items-center">
-                          <span className="text-xs font-semibold text-[#0a9396] bg-[#0a939615] px-3 py-1 rounded-full">
-                            {o.type || 'Opportunity'}
-                          </span>
+              <>
+                <div className="flex flex-col gap-4">
+                  {pendingVisible.map((o) => {
+                    const isApproving = actionLoadingId === `approve-${o.id}`
+                    const isRejecting = actionLoadingId === `reject-${o.id}`
 
-                          {o.organization && (
-                            <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-                              {o.organization}
-                            </span>
-                          )}
+                    return (
+                      <div key={o.id} className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+                        <div className="flex flex-col gap-5 lg:flex-row lg:justify-between lg:items-start">
+                          {/* Info */}
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap gap-2 items-center">
+                              <span className="text-xs font-semibold text-[#0a9396] bg-[#0a939615] px-3 py-1 rounded-full">
+                                {o.type || 'Opportunity'}
+                              </span>
+                              {o.organization && (
+                                <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+                                  {o.organization}
+                                </span>
+                              )}
+                              {o.submitted_by_user && (
+                                <span className="text-xs font-semibold text-orange-500 bg-orange-50 px-3 py-1 rounded-full">
+                                  User submitted
+                                </span>
+                              )}
+                              {o.featured && (
+                                <span className="text-xs font-semibold text-yellow-700 bg-yellow-50 px-3 py-1 rounded-full">
+                                  ★ Featured
+                                </span>
+                              )}
+                              {o.verified && (
+                                <span className="text-xs font-semibold text-green-700 bg-green-50 px-3 py-1 rounded-full">
+                                  ✓ Verified
+                                </span>
+                              )}
+                            </div>
 
-                          {o.submitted_by_user && (
-                            <span className="text-xs font-semibold text-orange-500 bg-orange-50 px-3 py-1 rounded-full">
-                              User submitted
-                            </span>
-                          )}
+                            <h3 className="text-xl font-bold text-gray-900 mt-3">
+                              {o.title || 'Untitled'}
+                            </h3>
 
-                          {o.featured && (
-                            <span className="text-xs font-semibold text-yellow-700 bg-yellow-50 px-3 py-1 rounded-full">
-                              Featured
-                            </span>
-                          )}
+                            {o.description && (
+                              <p className="text-gray-500 text-sm mt-2 whitespace-pre-line">
+                                {o.description}
+                              </p>
+                            )}
 
-                          {o.verified && (
-                            <span className="text-xs font-semibold text-green-700 bg-green-50 px-3 py-1 rounded-full">
-                              Verified
-                            </span>
-                          )}
-                        </div>
+                            <div className="flex flex-wrap gap-x-5 gap-y-2 mt-4 text-sm text-gray-500">
+                              <span>📅 Deadline: {formatDate(o.deadline)}</span>
+                              <span>
+                                📍 {o.location || 'No location'}
+                                {o.city ? ` · ${o.city}` : ''}
+                              </span>
+                              {o.level && <span>🎓 {o.level}</span>}
+                              {o.discipline && <span>📚 {o.discipline}</span>}
+                            </div>
 
-                        <h3 className="text-xl font-bold text-gray-900 mt-3">{o.title}</h3>
+                            <div className="flex flex-wrap gap-x-5 gap-y-2 mt-3 text-xs text-gray-400">
+                              <span>Created: {formatDate(o.created_at)}</span>
+                              {o.submitted_by && (
+                                <span className="break-all">Submitted by user ID: {o.submitted_by}</span>
+                              )}
+                            </div>
 
-                        {o.description && (
-                          <p className="text-gray-500 text-sm mt-2 whitespace-pre-line">
-                            {o.description}
-                          </p>
-                        )}
+                            <div className="flex flex-wrap gap-4 mt-4 text-sm">
+                              {o.link && (
+                                <a
+                                  href={o.link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[#0a9396] hover:underline"
+                                >
+                                  View application link →
+                                </a>
+                              )}
+                              {o.source_url && (
+                                <a
+                                  href={o.source_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-gray-500 hover:underline"
+                                >
+                                  View source →
+                                </a>
+                              )}
+                            </div>
+                          </div>
 
-                        <div className="flex flex-wrap gap-x-5 gap-y-2 mt-4 text-sm text-gray-500">
-                          <span>📅 Deadline: {formatDate(o.deadline)}</span>
-                          <span>
-                            📍 {o.location || 'No location'}
-                            {o.city ? ` · ${o.city}` : ''}
-                          </span>
-                          {o.level && <span>🎓 {o.level}</span>}
-                          {o.discipline && <span>📚 {o.discipline}</span>}
-                        </div>
-
-                        <div className="flex flex-wrap gap-x-5 gap-y-2 mt-3 text-xs text-gray-400">
-                          <span>Created: {formatDate(o.created_at)}</span>
-                          {o.submitter_email ? (
-                            <span className="break-all">Submitted by: {o.submitter_email}</span>
-                          ) : o.submitted_by ? (
-                            <span className="break-all">Submitted by user ID: {o.submitted_by}</span>
-                          ) : null}
-                        </div>
-
-                        <div className="flex flex-wrap gap-4 mt-4 text-sm">
-                          {o.link && (
-                            <a
-                              href={o.link}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-[#0a9396] hover:underline"
+                          {/* Actions */}
+                          <div className="flex flex-col gap-2 shrink-0">
+                            <button
+                              onClick={() => openEditModal(o)}
+                              className="bg-gray-100 text-gray-700 px-4 py-2 rounded-full text-sm font-semibold hover:bg-gray-200 transition-all"
                             >
-                              View application link →
-                            </a>
-                          )}
+                              Edit
+                            </button>
 
-                          {o.source_url && (
-                            <a
-                              href={o.source_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-gray-500 hover:underline"
+                            <button
+                              onClick={() => approveOpportunity(o)}
+                              disabled={!!actionLoadingId}
+                              className="bg-[#0a9396] text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-[#007f82] transition-all disabled:opacity-50"
                             >
-                              View source →
-                            </a>
-                          )}
+                              {isApproving ? 'Approving…' : 'Approve'}
+                            </button>
+
+                            {rejectConfirm === o.id ? (
+                              <ConfirmBox
+                                message="Reject and permanently delete this submission?"
+                                confirmLabel="Yes, reject"
+                                loading={isRejecting}
+                                onConfirm={() => rejectOpportunity(o.id)}
+                                onCancel={() => setRejectConfirm(null)}
+                              />
+                            ) : (
+                              <button
+                                onClick={() => setRejectConfirm(o.id)}
+                                disabled={!!actionLoadingId}
+                                className="bg-red-50 text-red-500 px-4 py-2 rounded-full text-sm font-semibold hover:bg-red-100 transition-all disabled:opacity-50"
+                              >
+                                Reject
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
+                    )
+                  })}
+                </div>
 
-                      <div className="flex flex-wrap gap-2 shrink-0">
-                        <button
-                          onClick={() => openEditModal(o)}
-                          className="bg-gray-100 text-gray-700 px-4 py-2 rounded-full text-sm font-semibold hover:bg-gray-200 transition-all"
-                        >
-                          Edit
-                        </button>
-
-                        <button
-                          onClick={() => approveOpportunity(o)}
-                          disabled={actionLoadingId === o.id}
-                          className="bg-[#0a9396] text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-[#007f82] transition-all disabled:opacity-50"
-                        >
-                          {actionLoadingId === o.id ? 'Approving...' : 'Approve'}
-                        </button>
-
-                        <button
-                          onClick={() => rejectOpportunity(o.id)}
-                          disabled={actionLoadingId === o.id}
-                          className="bg-red-50 text-red-500 px-4 py-2 rounded-full text-sm font-semibold hover:bg-red-100 transition-all disabled:opacity-50"
-                        >
-                          {actionLoadingId === o.id ? 'Working...' : 'Reject'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                <Pagination
+                  page={pendingPage}
+                  pageCount={pendingPageCount}
+                  onPage={setPendingPage}
+                />
+              </>
             )}
           </>
         ) : (
+          // ── APPROVED TAB ───────────────────────────────────────────────────
           <>
-            <div className="mb-6">
+            <div className="mb-4">
               <h2 className="text-2xl font-bold text-gray-900">Approved Opportunities</h2>
               <p className="text-gray-500 text-sm mt-1">
-                Manage live opportunities, feature top ones, verify trusted listings, or edit details anytime.
+                {filteredApproved.length === approvedCount
+                  ? `${approvedCount} live opportunit${approvedCount === 1 ? 'y' : 'ies'}`
+                  : `${filteredApproved.length} of ${approvedCount} matching`}
               </p>
             </div>
 
-            {approved.length === 0 ? (
+            <FilterBar
+              search={approvedSearch}
+              onSearch={setApprovedSearch}
+              typeFilter={approvedType}
+              onType={setApprovedType}
+              sortBy={approvedSort}
+              onSort={setApprovedSort}
+              extraFilters={approvedExtra}
+              onExtra={toggleApprovedExtra}
+            />
+
+            {filteredApproved.length === 0 ? (
               <div className="bg-white rounded-2xl p-10 text-center border border-gray-100 shadow-sm">
-                <p className="text-gray-400 text-lg font-semibold">No approved opportunities yet</p>
+                <p className="text-gray-400 text-lg font-semibold">
+                  {approvedSearch || approvedType || Object.values(approvedExtra).some(Boolean)
+                    ? 'No opportunities match your filters'
+                    : 'No approved opportunities yet'}
+                </p>
+                {(approvedSearch || approvedType || Object.values(approvedExtra).some(Boolean)) && (
+                  <p className="text-gray-400 text-sm mt-2">Try clearing your search or filters.</p>
+                )}
               </div>
             ) : (
-              <div className="flex flex-col gap-4">
-                {approved.map((o) => {
-                  const featuredLoading = actionLoadingId === `featured-${o.id}`
-                  const verifiedLoading = actionLoadingId === `verified-${o.id}`
-                  const generalLoading = actionLoadingId === o.id
+              <>
+                <div className="flex flex-col gap-4">
+                  {approvedVisible.map((o) => {
+                    const featuredLoading = actionLoadingId === `featured-${o.id}`
+                    const verifiedLoading = actionLoadingId === `verified-${o.id}`
+                    const generalLoading =
+                      actionLoadingId === `move-${o.id}` || actionLoadingId === `delete-${o.id}`
 
-                  return (
-                    <div
-                      key={o.id}
-                      className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm"
-                    >
-                      <div className="flex flex-col gap-5 lg:flex-row lg:justify-between lg:items-start">
-                        <div className="min-w-0">
-                          <div className="flex gap-2 flex-wrap items-center">
-                            <span className="text-xs font-semibold text-[#0a9396] bg-[#0a939615] px-3 py-1 rounded-full">
-                              {o.type || 'Opportunity'}
-                            </span>
-
-                            {o.organization && (
-                              <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-                                {o.organization}
+                    return (
+                      <div key={o.id} className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+                        <div className="flex flex-col gap-5 lg:flex-row lg:justify-between lg:items-start">
+                          {/* Info */}
+                          <div className="min-w-0">
+                            <div className="flex gap-2 flex-wrap items-center">
+                              <span className="text-xs font-semibold text-[#0a9396] bg-[#0a939615] px-3 py-1 rounded-full">
+                                {o.type || 'Opportunity'}
                               </span>
-                            )}
-
-                            {o.verified && (
-                              <span className="text-xs font-semibold text-green-700 bg-green-50 px-3 py-1 rounded-full">
-                                ✓ Verified
-                              </span>
-                            )}
-
-                            {o.featured && (
-                              <span className="text-xs font-semibold text-yellow-700 bg-yellow-50 px-3 py-1 rounded-full">
-                                ★ Featured
-                              </span>
-                            )}
-
-                            {o.submitted_by_user && (
-                              <span className="text-xs font-semibold text-orange-500 bg-orange-50 px-3 py-1 rounded-full">
-                                User submitted
-                              </span>
-                            )}
-                          </div>
-
-                          <h3 className="text-xl font-bold text-gray-900 mt-3">{o.title}</h3>
-
-                          {o.description && (
-                            <p className="text-gray-500 text-sm mt-2 whitespace-pre-line">
-                              {o.description}
-                            </p>
-                          )}
-
-                          <div className="flex flex-wrap gap-x-5 gap-y-2 mt-4 text-sm text-gray-500">
-                            <span>📅 Deadline: {formatDate(o.deadline)}</span>
-                            <span>
-                              📍 {o.location || 'No location'}
-                              {o.city ? ` · ${o.city}` : ''}
-                            </span>
-                            {o.level && <span>🎓 {o.level}</span>}
-                            {o.discipline && <span>📚 {o.discipline}</span>}
-                          </div>
-
-                          <div className="flex flex-wrap gap-x-5 gap-y-2 mt-3 text-xs text-gray-400">
-                            <span>Created: {formatDate(o.created_at)}</span>
-                            {o.submitter_email ? (
-                              <span className="break-all">Submitted by: {o.submitter_email}</span>
-                            ) : o.submitted_by ? (
-                              <span className="break-all">Submitted by user ID: {o.submitted_by}</span>
-                            ) : null}
-                          </div>
-
-                          <div className="flex flex-wrap gap-4 mt-4 text-sm">
-                            {o.link && (
-                              <a
-                                href={o.link}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-[#0a9396] hover:underline"
-                              >
-                                View opportunity →
-                              </a>
-                            )}
-
-                            {o.source_url && (
-                              <a
-                                href={o.source_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-gray-500 hover:underline"
-                              >
-                                View source →
-                              </a>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-2 shrink-0 min-w-[190px]">
-                          <button
-                            onClick={() => openEditModal(o)}
-                            className="px-4 py-2 rounded-full text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all"
-                          >
-                            Edit details
-                          </button>
-
-                          <button
-                            onClick={() => toggleField(o, 'featured')}
-                            disabled={featuredLoading}
-                            className={`px-4 py-2 rounded-full text-sm font-semibold transition-all disabled:opacity-50 ${
-                              o.featured
-                                ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                            }`}
-                          >
-                            {featuredLoading
-                              ? 'Updating...'
-                              : o.featured
-                              ? 'Remove Featured'
-                              : 'Mark Featured'}
-                          </button>
-
-                          <button
-                            onClick={() => toggleField(o, 'verified')}
-                            disabled={verifiedLoading}
-                            className={`px-4 py-2 rounded-full text-sm font-semibold transition-all disabled:opacity-50 ${
-                              o.verified
-                                ? 'bg-green-100 text-green-800 hover:bg-green-200'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                            }`}
-                          >
-                            {verifiedLoading
-                              ? 'Updating...'
-                              : o.verified
-                              ? 'Remove Verified'
-                              : 'Mark Verified'}
-                          </button>
-
-                          <button
-                            onClick={() => moveBackToPending(o)}
-                            disabled={generalLoading}
-                            className="px-4 py-2 rounded-full text-sm font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 transition-all disabled:opacity-50"
-                          >
-                            {generalLoading ? 'Updating...' : 'Move to Pending'}
-                          </button>
-
-                          {deleteConfirm === o.id ? (
-                            <div className="bg-red-50 border border-red-100 rounded-2xl p-3 mt-1">
-                              <p className="text-xs text-red-600 font-semibold mb-2">
-                                Delete this opportunity permanently?
-                              </p>
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => deleteApproved(o.id)}
-                                  disabled={generalLoading}
-                                  className="bg-red-500 text-white px-3 py-1.5 rounded-full text-xs font-semibold hover:bg-red-600 transition-all disabled:opacity-50"
-                                >
-                                  Yes, delete
-                                </button>
-                                <button
-                                  onClick={() => setDeleteConfirm(null)}
-                                  className="bg-white text-gray-500 px-3 py-1.5 rounded-full text-xs font-semibold border border-gray-200 hover:bg-gray-50 transition-all"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
+                              {o.organization && (
+                                <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+                                  {o.organization}
+                                </span>
+                              )}
+                              {o.verified && (
+                                <span className="text-xs font-semibold text-green-700 bg-green-50 px-3 py-1 rounded-full">
+                                  ✓ Verified
+                                </span>
+                              )}
+                              {o.featured && (
+                                <span className="text-xs font-semibold text-yellow-700 bg-yellow-50 px-3 py-1 rounded-full">
+                                  ★ Featured
+                                </span>
+                              )}
+                              {o.submitted_by_user && (
+                                <span className="text-xs font-semibold text-orange-500 bg-orange-50 px-3 py-1 rounded-full">
+                                  User submitted
+                                </span>
+                              )}
                             </div>
-                          ) : (
+
+                            <h3 className="text-xl font-bold text-gray-900 mt-3">
+                              {o.title || 'Untitled'}
+                            </h3>
+
+                            {o.description && (
+                              <p className="text-gray-500 text-sm mt-2 whitespace-pre-line">
+                                {o.description}
+                              </p>
+                            )}
+
+                            <div className="flex flex-wrap gap-x-5 gap-y-2 mt-4 text-sm text-gray-500">
+                              <span>📅 Deadline: {formatDate(o.deadline)}</span>
+                              <span>
+                                📍 {o.location || 'No location'}
+                                {o.city ? ` · ${o.city}` : ''}
+                              </span>
+                              {o.level && <span>🎓 {o.level}</span>}
+                              {o.discipline && <span>📚 {o.discipline}</span>}
+                            </div>
+
+                            <div className="flex flex-wrap gap-x-5 gap-y-2 mt-3 text-xs text-gray-400">
+                              <span>Created: {formatDate(o.created_at)}</span>
+                              {o.submitted_by && (
+                                <span className="break-all">Submitted by user ID: {o.submitted_by}</span>
+                              )}
+                            </div>
+
+                            <div className="flex flex-wrap gap-4 mt-4 text-sm">
+                              {o.link && (
+                                <a
+                                  href={o.link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[#0a9396] hover:underline"
+                                >
+                                  View opportunity →
+                                </a>
+                              )}
+                              {o.source_url && (
+                                <a
+                                  href={o.source_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-gray-500 hover:underline"
+                                >
+                                  View source →
+                                </a>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex flex-col gap-2 shrink-0 min-w-[190px]">
                             <button
-                              onClick={() => setDeleteConfirm(o.id)}
-                              className="px-4 py-2 rounded-full text-sm font-semibold bg-red-50 text-red-500 hover:bg-red-100 transition-all"
+                              onClick={() => openEditModal(o)}
+                              className="px-4 py-2 rounded-full text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all"
                             >
-                              Delete
+                              Edit details
                             </button>
-                          )}
+
+                            <button
+                              onClick={() => toggleField(o, 'featured')}
+                              disabled={!!actionLoadingId}
+                              aria-pressed={o.featured}
+                              className={`px-4 py-2 rounded-full text-sm font-semibold transition-all disabled:opacity-50 ${
+                                o.featured
+                                  ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                              }`}
+                            >
+                              {featuredLoading
+                                ? 'Updating…'
+                                : o.featured
+                                ? 'Remove Featured'
+                                : 'Mark Featured'}
+                            </button>
+
+                            <button
+                              onClick={() => toggleField(o, 'verified')}
+                              disabled={!!actionLoadingId}
+                              aria-pressed={o.verified}
+                              className={`px-4 py-2 rounded-full text-sm font-semibold transition-all disabled:opacity-50 ${
+                                o.verified
+                                  ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                              }`}
+                            >
+                              {verifiedLoading
+                                ? 'Updating…'
+                                : o.verified
+                                ? 'Remove Verified'
+                                : 'Mark Verified'}
+                            </button>
+
+                            <button
+                              onClick={() => moveBackToPending(o)}
+                              disabled={!!actionLoadingId}
+                              className="px-4 py-2 rounded-full text-sm font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 transition-all disabled:opacity-50"
+                            >
+                              {generalLoading ? 'Updating…' : 'Move to Pending'}
+                            </button>
+
+                            {deleteConfirm === o.id ? (
+                              <ConfirmBox
+                                message="Delete this opportunity permanently?"
+                                confirmLabel="Yes, delete"
+                                loading={actionLoadingId === `delete-${o.id}`}
+                                onConfirm={() => deleteApproved(o.id)}
+                                onCancel={() => setDeleteConfirm(null)}
+                              />
+                            ) : (
+                              <button
+                                onClick={() => setDeleteConfirm(o.id)}
+                                disabled={!!actionLoadingId}
+                                className="px-4 py-2 rounded-full text-sm font-semibold bg-red-50 text-red-500 hover:bg-red-100 transition-all disabled:opacity-50"
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )
-                })}
-              </div>
+                    )
+                  })}
+                </div>
+
+                <Pagination
+                  page={approvedPage}
+                  pageCount={approvedPageCount}
+                  onPage={setApprovedPage}
+                />
+              </>
             )}
           </>
         )}
       </div>
 
-      {/* EDIT MODAL */}
+      {/* ── EDIT MODAL ─────────────────────────────────────────────────────── */}
       {editingItem && (
-        <div className="fixed inset-0 z-50 bg-black/35 flex items-center justify-center px-4 py-6">
+        <div
+          className="fixed inset-0 z-50 bg-black/35 flex items-center justify-center px-4 py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Edit opportunity"
+        >
           <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-white rounded-3xl shadow-xl border border-gray-100 p-8">
             <div className="flex items-start justify-between gap-4 mb-6">
               <div>
@@ -1028,9 +1346,9 @@ function AdminPanel() {
                   Fix formatting, links, deadline, city, discipline, and labels before saving.
                 </p>
               </div>
-
               <button
                 onClick={closeEditModal}
+                aria-label="Close edit modal"
                 className="text-gray-400 hover:text-gray-600 text-xl leading-none"
               >
                 ×
@@ -1038,17 +1356,18 @@ function AdminPanel() {
             </div>
 
             {editError && (
-              <div className="mb-5 rounded-2xl bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-3">
+              <div role="alert" className="mb-5 rounded-2xl bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-3">
                 {editError}
               </div>
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="md:col-span-2">
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">
+                <label htmlFor="edit-title" className="text-sm font-semibold text-gray-700 mb-1 block">
                   Opportunity Title *
                 </label>
                 <input
+                  id="edit-title"
                   name="title"
                   value={editForm.title}
                   onChange={handleEditChange}
@@ -1057,10 +1376,11 @@ function AdminPanel() {
               </div>
 
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">
+                <label htmlFor="edit-org" className="text-sm font-semibold text-gray-700 mb-1 block">
                   Organization *
                 </label>
                 <input
+                  id="edit-org"
                   name="organization"
                   value={editForm.organization}
                   onChange={handleEditChange}
@@ -1069,10 +1389,11 @@ function AdminPanel() {
               </div>
 
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">
+                <label htmlFor="edit-type" className="text-sm font-semibold text-gray-700 mb-1 block">
                   Type *
                 </label>
                 <select
+                  id="edit-type"
                   name="type"
                   value={editForm.type}
                   onChange={handleEditChange}
@@ -1080,18 +1401,17 @@ function AdminPanel() {
                 >
                   <option value="">Select type</option>
                   {TYPE_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
+                    <option key={option} value={option}>{option}</option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">
+                <label htmlFor="edit-deadline" className="text-sm font-semibold text-gray-700 mb-1 block">
                   Deadline *
                 </label>
                 <input
+                  id="edit-deadline"
                   type="date"
                   name="deadline"
                   value={editForm.deadline}
@@ -1101,10 +1421,11 @@ function AdminPanel() {
               </div>
 
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">
+                <label htmlFor="edit-location" className="text-sm font-semibold text-gray-700 mb-1 block">
                   Location *
                 </label>
                 <select
+                  id="edit-location"
                   name="location"
                   value={editForm.location}
                   onChange={handleEditChange}
@@ -1112,18 +1433,15 @@ function AdminPanel() {
                 >
                   <option value="">Select location</option>
                   {LOCATION_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
+                    <option key={option} value={option}>{option}</option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">
-                  City
-                </label>
+                <label htmlFor="edit-city" className="text-sm font-semibold text-gray-700 mb-1 block">City</label>
                 <input
+                  id="edit-city"
                   name="city"
                   value={editForm.city}
                   onChange={handleEditChange}
@@ -1133,10 +1451,9 @@ function AdminPanel() {
               </div>
 
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">
-                  Discipline
-                </label>
+                <label htmlFor="edit-discipline" className="text-sm font-semibold text-gray-700 mb-1 block">Discipline</label>
                 <input
+                  id="edit-discipline"
                   name="discipline"
                   value={editForm.discipline}
                   onChange={handleEditChange}
@@ -1146,10 +1463,9 @@ function AdminPanel() {
               </div>
 
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">
-                  Level
-                </label>
+                <label htmlFor="edit-level" className="text-sm font-semibold text-gray-700 mb-1 block">Level</label>
                 <select
+                  id="edit-level"
                   name="level"
                   value={editForm.level}
                   onChange={handleEditChange}
@@ -1157,18 +1473,17 @@ function AdminPanel() {
                 >
                   <option value="">Select level</option>
                   {LEVEL_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
+                    <option key={option} value={option}>{option}</option>
                   ))}
                 </select>
               </div>
 
               <div className="md:col-span-2">
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">
+                <label htmlFor="edit-description" className="text-sm font-semibold text-gray-700 mb-1 block">
                   Description *
                 </label>
                 <textarea
+                  id="edit-description"
                   name="description"
                   value={editForm.description}
                   onChange={handleEditChange}
@@ -1178,23 +1493,25 @@ function AdminPanel() {
               </div>
 
               <div className="md:col-span-2">
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">
+                <label htmlFor="edit-link" className="text-sm font-semibold text-gray-700 mb-1 block">
                   Application Link *
                 </label>
                 <input
+                  id="edit-link"
                   name="link"
                   value={editForm.link}
                   onChange={handleEditChange}
-                  placeholder="https://..."
+                  placeholder="https://…"
                   className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:border-[#0a9396]"
                 />
               </div>
 
               <div className="md:col-span-2">
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">
+                <label htmlFor="edit-source" className="text-sm font-semibold text-gray-700 mb-1 block">
                   Source URL
                 </label>
                 <input
+                  id="edit-source"
                   name="source_url"
                   value={editForm.source_url}
                   onChange={handleEditChange}
@@ -1214,7 +1531,6 @@ function AdminPanel() {
                   />
                   Featured
                 </label>
-
                 <label className="inline-flex items-center gap-2 text-sm text-gray-700">
                   <input
                     type="checkbox"
@@ -1236,13 +1552,12 @@ function AdminPanel() {
               >
                 Cancel
               </button>
-
               <button
                 onClick={saveEdit}
                 disabled={savingEdit}
                 className="px-6 py-2.5 rounded-full bg-[#0a9396] text-white font-semibold hover:bg-[#007f82] transition-all disabled:opacity-50"
               >
-                {savingEdit ? 'Saving...' : 'Save changes'}
+                {savingEdit ? 'Saving…' : 'Save changes'}
               </button>
             </div>
           </div>

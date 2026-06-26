@@ -4,6 +4,8 @@ import { supabase } from './supabase'
 import Logo from './logo'
 import { useAuth } from './AuthContext'
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const INITIAL_FORM = {
   title: '',
   type: '',
@@ -24,6 +26,8 @@ const TYPE_OPTIONS = [
   'Competition',
   'Hackathon',
   'Research',
+  'Fellowship',
+  'Program',
 ]
 
 const LOCATION_OPTIONS = ['Remote', 'Onsite', 'Hybrid']
@@ -36,6 +40,8 @@ const LEVEL_OPTIONS = [
   'PhD',
   'All levels',
 ]
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function normalizeText(value = '') {
   return value.trim().replace(/\s+/g, ' ')
@@ -50,31 +56,23 @@ function toTitleCase(value = '') {
     .join(' ')
 }
 
-function normalizeOptionalText(value = '') {
-  const cleaned = normalizeText(value)
-  return cleaned ? cleaned : null
-}
-
 function normalizeOptionalTitleCase(value = '') {
   const cleaned = normalizeText(value)
   return cleaned ? toTitleCase(cleaned) : null
 }
 
+/**
+ * More lenient than AdminPanel's version — auto-prefixes https:// if missing.
+ * Better UX for user-submitted forms.
+ */
 function normalizeUrl(value = '') {
   const trimmed = value.trim()
-
   if (!trimmed) return null
 
   try {
-    const withProtocol =
-      /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
-
+    const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
     const parsed = new URL(withProtocol)
-
-    if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname) {
-      return null
-    }
-
+    if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname) return null
     return parsed.toString()
   } catch {
     return null
@@ -83,15 +81,14 @@ function normalizeUrl(value = '') {
 
 function isFutureOrToday(dateString) {
   if (!dateString) return false
-
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-
   const selected = new Date(`${dateString}T00:00:00`)
   if (Number.isNaN(selected.getTime())) return false
-
   return selected >= today
 }
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 function SubmitForm() {
   const { user, loading } = useAuth()
@@ -110,138 +107,138 @@ function SubmitForm() {
     return `${yyyy}-${mm}-${dd}`
   }, [])
 
-  if (!loading && !user) {
+  // Show nothing while auth is resolving — avoids flash before redirect
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#f0fafa] flex items-center justify-center">
+        <p className="text-gray-400 text-sm">Loading…</p>
+      </div>
+    )
+  }
+
+  if (!user) {
     return <Navigate to="/auth" replace />
   }
 
-  const handleChange = (e) => {
+  function handleChange(e) {
     const { name, value } = e.target
     setForm((prev) => ({ ...prev, [name]: value }))
-
     if (errorMessage) setErrorMessage('')
   }
 
-  const resetForm = () => {
-    setForm(INITIAL_FORM)
-  }
-
-  const handleSubmit = async (e) => {
+  async function handleSubmit(e) {
     e.preventDefault()
     if (submitting) return
 
     setSubmitting(true)
     setErrorMessage('')
 
-    const title = toTitleCase(form.title)
-    const organization = toTitleCase(form.organization)
-    const type = form.type.trim()
-    const deadline = form.deadline
-    const description = normalizeText(form.description)
-    const location = form.location.trim()
+    try {
+      // ── Normalize ──────────────────────────────────────────────────────────
+      const title = toTitleCase(form.title)
+      const organization = toTitleCase(form.organization)
+      const type = form.type.trim()
+      const deadline = form.deadline
+      const description = normalizeText(form.description)
+      const location = form.location.trim()
+      const applicationLink = normalizeUrl(form.link)
+      const city = normalizeOptionalTitleCase(form.city)
+      const discipline = normalizeOptionalTitleCase(form.discipline)
+      const level = form.level.trim() || null
 
-    const rawApplicationLink = form.link.trim()
-    const rawSourceUrl = form.source_url.trim()
+      let sourceUrl = null
+      if (form.source_url.trim()) {
+        sourceUrl = normalizeUrl(form.source_url)
+        if (!sourceUrl) {
+          setErrorMessage('Source URL must be a valid link if provided.')
+          return
+        }
+      }
 
-    const applicationLink = normalizeUrl(rawApplicationLink)
-
-    let sourceUrl = null
-    if (rawSourceUrl) {
-      sourceUrl = normalizeUrl(rawSourceUrl)
-      if (!sourceUrl) {
-        setErrorMessage('Source URL must be a valid link if provided.')
-        setSubmitting(false)
+      // ── Validation ─────────────────────────────────────────────────────────
+      if (!title) {
+        setErrorMessage('Please enter an opportunity title.')
         return
       }
-    }
 
-    const city = normalizeOptionalTitleCase(form.city)
-    const discipline = normalizeOptionalTitleCase(form.discipline)
-    const level = form.level.trim() || null
+      if (!organization) {
+        setErrorMessage('Please enter the organization name.')
+        return
+      }
 
-    if (!title) {
-      setErrorMessage('Please enter an opportunity title.')
+      if (!TYPE_OPTIONS.includes(type)) {
+        setErrorMessage('Please select a valid opportunity type.')
+        return
+      }
+
+      if (!deadline || !isFutureOrToday(deadline)) {
+        setErrorMessage('Please choose a valid deadline that is today or later.')
+        return
+      }
+
+      if (!description || description.length < 20) {
+        setErrorMessage('Please add a slightly fuller description (at least 20 characters).')
+        return
+      }
+
+      if (!applicationLink) {
+        setErrorMessage('Please enter a valid application link.')
+        return
+      }
+
+      if (!LOCATION_OPTIONS.includes(location)) {
+        setErrorMessage('Please select a valid location type.')
+        return
+      }
+
+      if (level && !LEVEL_OPTIONS.includes(level)) {
+        setErrorMessage('Please select a valid level.')
+        return
+      }
+
+      // ── Submit ─────────────────────────────────────────────────────────────
+      const payload = {
+        title,
+        organization,
+        type,
+        deadline,
+        description,
+        link: applicationLink,
+        location,
+        city,
+        discipline,
+        level,
+        source_url: sourceUrl,
+        status: 'pending',
+        submitted_by_user: true,
+        verified: false,
+        featured: false,
+        submitted_by: user.id,
+        submitter_email: user.email ?? null,
+      }
+
+      const { error } = await supabase.from('opportunities').insert([payload])
+
+      if (error) {
+        console.error('Opportunity submission error:', error)
+        setErrorMessage(
+          error.message || 'Something went wrong while submitting. Please try again.'
+        )
+        return
+      }
+
+      setSuccessTitle(title)
+      setSubmitted(true)
+      setForm(INITIAL_FORM)
+    } catch (err) {
+      console.error('Unexpected submission error:', err)
+      setErrorMessage('An unexpected error occurred. Please try again.')
+    } finally {
       setSubmitting(false)
-      return
     }
-
-    if (!organization) {
-      setErrorMessage('Please enter the organization name.')
-      setSubmitting(false)
-      return
-    }
-
-    if (!TYPE_OPTIONS.includes(type)) {
-      setErrorMessage('Please select a valid opportunity type.')
-      setSubmitting(false)
-      return
-    }
-
-    if (!deadline || !isFutureOrToday(deadline)) {
-      setErrorMessage('Please choose a valid deadline that is today or later.')
-      setSubmitting(false)
-      return
-    }
-
-    if (!description || description.length < 20) {
-      setErrorMessage('Please add a slightly fuller description (at least 20 characters).')
-      setSubmitting(false)
-      return
-    }
-
-    if (!applicationLink) {
-      setErrorMessage('Please enter a valid application link.')
-      setSubmitting(false)
-      return
-    }
-
-    if (!LOCATION_OPTIONS.includes(location)) {
-      setErrorMessage('Please select a valid location type.')
-      setSubmitting(false)
-      return
-    }
-
-    if (level && !LEVEL_OPTIONS.includes(level)) {
-      setErrorMessage('Please select a valid level.')
-      setSubmitting(false)
-      return
-    }
-
-    const payload = {
-      title,
-      organization,
-      type,
-      deadline,
-      description,
-      link: applicationLink,
-      location,
-      city,
-      discipline,
-      level,
-      source_url: sourceUrl,
-      status: 'pending',
-      submitted_by_user: true,
-      verified: false,
-      featured: false,
-      submitted_by: user.id,
-      submitter_email: user.email ?? null,
-    }
-
-    const { error } = await supabase.from('opportunities').insert([payload])
-
-    setSubmitting(false)
-
-    if (error) {
-      console.error('Opportunity submission error:', error)
-      setErrorMessage(
-        error.message || 'Something went wrong while submitting. Please try again.'
-      )
-      return
-    }
-
-    setSuccessTitle(title)
-    setSubmitted(true)
-    resetForm()
   }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-[#f0fafa]">
@@ -250,7 +247,6 @@ function SubmitForm() {
           <Link to="/opportunities">
             <Logo />
           </Link>
-
           <Link
             to="/opportunities"
             className="text-sm text-gray-500 hover:text-[#0a9396] transition-all"
@@ -263,8 +259,8 @@ function SubmitForm() {
       <div className="max-w-2xl mx-auto px-6 py-16">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Submit an Opportunity</h1>
         <p className="text-gray-500 mb-3">
-          Know about a scholarship, internship, competition, or program Pakistani
-          students should know about?
+          Know about a scholarship, internship, fellowship, competition, or any opportunity
+          Pakistani students should know about?
         </p>
         <p className="text-gray-500 mb-10">
           Submit it here and Stride will review it before publishing.
@@ -279,7 +275,7 @@ function SubmitForm() {
               submitted for review.
             </p>
             <p className="text-gray-500 mt-2">
-              If it’s a good fit for Stride, it’ll be added after approval.
+              If it's a good fit for Stride, it'll be added after approval.
             </p>
 
             <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
@@ -304,16 +300,21 @@ function SubmitForm() {
             className="bg-white rounded-2xl p-8 border border-gray-100 shadow-sm flex flex-col gap-5"
           >
             {errorMessage && (
-              <div className="rounded-xl bg-red-50 text-red-600 text-sm px-4 py-3 border border-red-100">
+              <div
+                role="alert"
+                className="rounded-xl bg-red-50 text-red-600 text-sm px-4 py-3 border border-red-100"
+              >
                 {errorMessage}
               </div>
             )}
 
+            {/* Title */}
             <div>
-              <label className="text-sm font-semibold text-gray-700 mb-1 block">
+              <label htmlFor="title" className="text-sm font-semibold text-gray-700 mb-1 block">
                 Opportunity Title *
               </label>
               <input
+                id="title"
                 required
                 name="title"
                 value={form.title}
@@ -323,11 +324,13 @@ function SubmitForm() {
               />
             </div>
 
+            {/* Organization */}
             <div>
-              <label className="text-sm font-semibold text-gray-700 mb-1 block">
+              <label htmlFor="organization" className="text-sm font-semibold text-gray-700 mb-1 block">
                 Organization *
               </label>
               <input
+                id="organization"
                 required
                 name="organization"
                 value={form.organization}
@@ -337,9 +340,13 @@ function SubmitForm() {
               />
             </div>
 
+            {/* Type */}
             <div>
-              <label className="text-sm font-semibold text-gray-700 mb-1 block">Type *</label>
+              <label htmlFor="type" className="text-sm font-semibold text-gray-700 mb-1 block">
+                Type *
+              </label>
               <select
+                id="type"
                 required
                 name="type"
                 value={form.type}
@@ -355,11 +362,13 @@ function SubmitForm() {
               </select>
             </div>
 
+            {/* Deadline */}
             <div>
-              <label className="text-sm font-semibold text-gray-700 mb-1 block">
+              <label htmlFor="deadline" className="text-sm font-semibold text-gray-700 mb-1 block">
                 Deadline *
               </label>
               <input
+                id="deadline"
                 required
                 type="date"
                 name="deadline"
@@ -370,11 +379,13 @@ function SubmitForm() {
               />
             </div>
 
+            {/* Description */}
             <div>
-              <label className="text-sm font-semibold text-gray-700 mb-1 block">
+              <label htmlFor="description" className="text-sm font-semibold text-gray-700 mb-1 block">
                 Description *
               </label>
               <textarea
+                id="description"
                 required
                 name="description"
                 value={form.description}
@@ -388,11 +399,13 @@ function SubmitForm() {
               </p>
             </div>
 
+            {/* Application Link */}
             <div>
-              <label className="text-sm font-semibold text-gray-700 mb-1 block">
+              <label htmlFor="link" className="text-sm font-semibold text-gray-700 mb-1 block">
                 Application Link *
               </label>
               <input
+                id="link"
                 required
                 name="link"
                 value={form.link}
@@ -402,11 +415,13 @@ function SubmitForm() {
               />
             </div>
 
+            {/* Location */}
             <div>
-              <label className="text-sm font-semibold text-gray-700 mb-1 block">
+              <label htmlFor="location" className="text-sm font-semibold text-gray-700 mb-1 block">
                 Location Type *
               </label>
               <select
+                id="location"
                 required
                 name="location"
                 value={form.location}
@@ -422,9 +437,13 @@ function SubmitForm() {
               </select>
             </div>
 
+            {/* City */}
             <div>
-              <label className="text-sm font-semibold text-gray-700 mb-1 block">City</label>
+              <label htmlFor="city" className="text-sm font-semibold text-gray-700 mb-1 block">
+                City
+              </label>
               <input
+                id="city"
                 name="city"
                 value={form.city}
                 onChange={handleChange}
@@ -433,11 +452,13 @@ function SubmitForm() {
               />
             </div>
 
+            {/* Discipline */}
             <div>
-              <label className="text-sm font-semibold text-gray-700 mb-1 block">
+              <label htmlFor="discipline" className="text-sm font-semibold text-gray-700 mb-1 block">
                 Discipline
               </label>
               <input
+                id="discipline"
                 name="discipline"
                 value={form.discipline}
                 onChange={handleChange}
@@ -446,9 +467,13 @@ function SubmitForm() {
               />
             </div>
 
+            {/* Level */}
             <div>
-              <label className="text-sm font-semibold text-gray-700 mb-1 block">Level</label>
+              <label htmlFor="level" className="text-sm font-semibold text-gray-700 mb-1 block">
+                Level
+              </label>
               <select
+                id="level"
                 name="level"
                 value={form.level}
                 onChange={handleChange}
@@ -463,11 +488,13 @@ function SubmitForm() {
               </select>
             </div>
 
+            {/* Source URL */}
             <div>
-              <label className="text-sm font-semibold text-gray-700 mb-1 block">
+              <label htmlFor="source_url" className="text-sm font-semibold text-gray-700 mb-1 block">
                 Source URL / Where did you find this?
               </label>
               <input
+                id="source_url"
                 name="source_url"
                 value={form.source_url}
                 onChange={handleChange}
@@ -481,7 +508,7 @@ function SubmitForm() {
               disabled={submitting}
               className="bg-[#0a9396] hover:bg-[#007f82] text-white px-6 py-3 rounded-full font-semibold transition-all disabled:opacity-50"
             >
-              {submitting ? 'Submitting...' : 'Submit Opportunity'}
+              {submitting ? 'Submitting…' : 'Submit Opportunity'}
             </button>
           </form>
         )}
