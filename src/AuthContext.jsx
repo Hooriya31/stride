@@ -27,7 +27,7 @@ function normalizeEmail(email = '') {
 
 /**
  * Defense-in-depth email guard.
- * UI validates format — this guards against programmatic misuse.
+ * UI validates format , this guards against programmatic misuse.
  */
 function validateEmail(email) {
   if (!email) return 'Email is required.'
