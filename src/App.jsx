@@ -421,9 +421,13 @@ function App() {
         <div className="flex justify-between items-center px-4 md:px-10 py-3 gap-3">
 
           {/* Logo — clicking takes user back to landing page */}
-          <Link to="/" className="shrink-0" aria-label="Go to Stride home">
-            <Logo />
-          </Link>
+          <button
+          onClick={() => resultsRef.current?.scrollIntoView({ behavior: 'smooth' })}
+          aria-label="Scroll to opportunities"
+          className="shrink-0"
+              >
+          <Logo />
+          </button>
 
           {/* Desktop search */}
           <input
