@@ -1,21 +1,30 @@
-import { GraduationCap } from 'lucide-react'
-
-function Logo() {
+/**
+ * Stride logo — SVG mark + wordmark.
+ * The mark's viewBox is tightly cropped around the actual shape
+ * (the original traced file had the mark occupying only ~15% of
+ * a 2000x2000 canvas, which made it render too small/thin at
+ * navbar and favicon sizes — this fixes that).
+ */
+function Logo({ showText = true, markSize = 28, className = '' }) {
   return (
-    <div className="flex items-center gap-2">
-      <GraduationCap size={28} color="#0a9396" strokeWidth={1.5} />
-      <span
-        style={{
-          fontSize: '1.4rem',
-          fontWeight: '700',
-          letterSpacing: '0.05em',
-          background: 'linear-gradient(to right, #0a9396, #5ec4c6)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-        }}
+    <div className={`flex items-center gap-2 ${className}`}>
+      <svg
+        width={markSize}
+        height={markSize}
+        viewBox="828.7 831.6 366.6 339.9"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+        className="shrink-0"
       >
-        Stride
-      </span>
+        <path
+          d="m913 1146h-1l-1-1h-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1l-1 1h-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1l-1-1h-1-1-1-1-1-1-1l-1 1h-1-1-1-1l-1.5-1.5v-1-1l2-2v-1l5-5v-1l7-7v-1l5-5v-1l6-6v-1l4-4v-1l5-5v-1l7-7v-1l6.5-6.5h1 1l1-1h1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1l1-1h1 1 1 1l1-1h1 1 1 1 1l1-1h1l1-1h1 1 1l1-1h1l1-1h1l1-1h1l1-1h1l1-1h1l3-3h1l3-3h1l7.5-7.5v-1l2-2v-1l2-2v-1l1-1v-1l1-1v-1l1-1v-1l1-1v-1-1l1-1v-1-1-1l1-1v-1-1-1l1-1v-1-1-1-1-1-1-1-1-1-1l-1-1v-1-1-1l-1-1v-1-1-1-1l-1-1v-1-1l-2-2v-1l-2-2v-1l-1.5-1.5h-1l-1-1-16 16v1l-5 5v1l-0.5 0.5h-1l-0.5 0.5v1l-14 14h-1l-2 2h-1l-1 1h-1l-1 1h-1l-1 1h-1-1l-1 1h-1l-1 1h-1-1-1-1l-1 1h-1-1-1l-1 1h-1-1-1-1-1-1-1-1-1-1-1-1-1-1l-1-1h-1-1-1l-1-1h-1-1-1-1l-1-1h-1-1l-1-1h-1-1l-1-1h-1l-1-1h-1l-1-1h-1l-1-1h-1l-1-1h-1l-1-1h-1l-2-2h-1l-2-2h-1l-16-16v-1l-2-2v-1l-2-2v-1l-1-1v-1l-2-2v-1l-2-2v-1-1l-1-1v-1l-1-1v-1l-1-1v-1-1l-1-1v-1l-1-1v-1-1l-1-1v-1-1l-1-1v-1-1-1l-1-1v-1-1-1-1-1l-1-1v-1-1-1-1l-1-1v-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1l1-1v-1-1-1-1l1-1v-1-1-1-1l1-1v-1-1-1l1-1v-1-1l1-1v-1-1-1l1-1v-1l1-1v-1-1-1l1-1v-1l1-1v-1l1-1v-1l1-1v-1l1-1v-1-1l2-2v-1l1-1v-1l2-2v-1l1-1v-1l2-2v-1l5-5v-1l5-5v-1l0.5-0.5h1l10-10h1l2-2h1l2-2h1l3-3h1l2-2h1l1-1h1 1l2-2h1 1l1-1h1l1-1h1l1-1h1 1l1-1h1l1-1h1 1l1-1h1 1l1-1h1l1-1h1 1 1 1l1-1h1 1l1-1h1 1 1 1 1 1l1-1h1 1 1 1l1-1h1 1 1 1 1 1 1 1 1 1 1 1 1 1l1-1h1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1l1 1h1 1 1l1-1h1 1 1l1 1h1l1-1h1 1 1 1 1 1 1 1 1 1 1 1 1 1l1 1h1l1-1h1l1 1h1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1l1-1h1l1 1h1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1l0.5 0.5v1 1l-1 1v1l-0.5 0.5h-1l-2.5 2.5v1l-10 10v1l-3 3v1l-7 7v1l-3 3v1l-6 6v1l-3 3v1l-8 8v1l-0.5 0.5h-1l-2 2h-1l-1 1h-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1l-1 1-1-1h-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1l-1 1h-1-1-1-1-1-1-1-1-1-1l-1 1h-1-1-1-1-1l-1 1h-1l-1 1h-1-1-1l-1 1h-1l-1 1h-1l-1 1h-1l-1 1h-1l-1 1h-1l-1 1h-1l-2 2h-1l-8.5 8.5v1l-3 3v1l-2 2v1l-1 1v1l-1 1v1l-1 1v1 1l-1 1v1l-1 1v1 1 1 1l-1 1v1 1 1l-1 1v1 1 1 1 1 1 1 1 1 1 1l1 1v1 1 1 1l1 1v1 1 1l1 1v1l1 1v1l1 1v1l2.5 2.5h1l1 1h1 1l2-2h1l1.5-1.5v-1l10-10v-1l4-4v-1l7-7v-1l8.5-8.5h1l2-2h1l2-2h1l1-1h1l1-1h1l1-1h1 1 1l1-1h1 1 1 1l1-1h1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1l1 1h1 1l1 1h1 1 1 1l1 1h1l1 1h1 1 1l1 1h1l2 2h1l1 1h1l1 1h1l2 2h1l3 3h1l3 3h1l8.5 8.5v1l3 3v1l3 3v1l2 2v1l2 2v1l1 1v1 1l2 2v1l1 1v1l1 1v1 1l1 1v1l1 1v1 1l1 1v1 1l1 1v1 1l1 1v1 1l1 1v1 1 1 1 1l1 1v1 1 1 1 1l1 1v1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1l-1 1v1 1 1 1l-1 1v1 1 1 1 1 1l-1 1v1 1 1l-1 1v1 1l-1 1v1 1 1l-1 1v1l-1 1v1 1l-1 1v1l-1 1v1l-1 1v1 1l-2 2v1 1l-2 2v1l-1 1v1l-2 2v1l-1 1v1l-4 4v1l-2 2v1l-4 4v1l-0.5 0.5h-1l-0.5 0.5v1l-3.5 3.5h-1l-0.5 0.5v1l-0.5 0.5h-1l-6 6h-1l-2 2h-1l-3 3h-1l-2 2h-1l-2 2h-1l-1 1h-1l-1 1h-1l-1 1h-1l-1 1h-1l-1 1h-1l-1 1h-1-1l-1 1h-1l-1 1h-1l-1 1h-1-1-1l-1 1h-1-1l-1 1h-1-1-1l-1 1h-1-1l-1 1h-1-1-1-1-1-1l-1 1h-1-1-1-1-1l-1 1h-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1l-1 1z"
+          fill="#0a9396"
+        />
+      </svg>
+
+      {showText && (
+        <span className="text-xl font-bold text-[#0a9396]">Stride</span>
+      )}
     </div>
   )
 }
