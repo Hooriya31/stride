@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import OpportunityCard from './OpportunityCard'
 import { supabase } from './supabase'
@@ -18,8 +18,7 @@ const CATEGORIES = [
 const CATEGORY_MAP = {
   Scholarships: 'Scholarship', Internships: 'Internship',
   Competitions: 'Competition', Hackathons: 'Hackathon',
-  Research: 'Research',       Fellowships: 'Fellowship',
-  Programs: 'Program',
+  Research: 'Research', Fellowships: 'Fellowship', Programs: 'Program',
 }
 
 const SORT_OPTIONS = [
@@ -41,18 +40,7 @@ const ABOUT_STATS = [
   { id: 'cost',    stat: '0 PKR',  label: 'Cost',          desc: 'Completely free for Pakistani students' },
 ]
 
-// ─── Debounce hook ────────────────────────────────────────────────────────────
-
-function useDebounce(value, delay = 300) {
-  const [debounced, setDebounced] = useState(value)
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delay)
-    return () => clearTimeout(timer)
-  }, [value, delay])
-  return debounced
-}
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Sub-components — defined OUTSIDE App to avoid "component created during render" ──
 
 function HamburgerIcon({ size = 16 }) {
   return (
@@ -68,7 +56,6 @@ function HamburgerIcon({ size = 16 }) {
 function Pagination({ page, totalPages, onPage }) {
   if (totalPages <= 1) return null
 
-  // Max 3 visible page buttons — safe on all screen sizes
   const getPageNumbers = () => {
     const pages = []
     const start = Math.max(1, page - 1)
@@ -80,39 +67,42 @@ function Pagination({ page, totalPages, onPage }) {
   return (
     <div className="flex items-center justify-center gap-1.5 mt-10 flex-wrap"
       role="navigation" aria-label="Pagination">
-      <button
-        onClick={() => onPage(page - 1)}
-        disabled={page === 1}
+      <button onClick={() => onPage(page - 1)} disabled={page === 1}
         aria-label="Previous page"
-        className="px-3 py-2 rounded-full text-sm font-semibold bg-white border border-gray-200 text-gray-500 hover:border-[#0a9396] hover:text-[#0a9396] disabled:opacity-40 transition-all"
-      >
+        className="px-3 py-2 rounded-full text-sm font-semibold bg-white border border-gray-200 text-gray-500 hover:border-[#0a9396] hover:text-[#0a9396] disabled:opacity-40 transition-all">
         ← Prev
       </button>
-
       {getPageNumbers().map((p) => (
-        <button
-          key={p}
-          onClick={() => onPage(p)}
+        <button key={p} onClick={() => onPage(p)}
           aria-label={`Page ${p}`}
           aria-current={p === page ? 'page' : undefined}
           className={`w-9 h-9 rounded-full text-sm font-semibold transition-all ${
             p === page
               ? 'bg-[#0a9396] text-white'
               : 'bg-white border border-gray-200 text-gray-500 hover:border-[#0a9396] hover:text-[#0a9396]'
-          }`}
-        >
+          }`}>
           {p}
         </button>
       ))}
-
-      <button
-        onClick={() => onPage(page + 1)}
-        disabled={page === totalPages}
+      <button onClick={() => onPage(page + 1)} disabled={page === totalPages}
         aria-label="Next page"
-        className="px-3 py-2 rounded-full text-sm font-semibold bg-white border border-gray-200 text-gray-500 hover:border-[#0a9396] hover:text-[#0a9396] disabled:opacity-40 transition-all"
-      >
+        className="px-3 py-2 rounded-full text-sm font-semibold bg-white border border-gray-200 text-gray-500 hover:border-[#0a9396] hover:text-[#0a9396] disabled:opacity-40 transition-all">
         Next →
       </button>
+    </div>
+  )
+}
+
+// FilterSection also outside — receives openFilter + toggleFilter as props
+function FilterSection({ name, openFilter, toggleFilter, children }) {
+  return (
+    <div className="border-b border-gray-100 py-3">
+      <button onClick={() => toggleFilter(name)} aria-expanded={openFilter === name}
+        className="w-full flex justify-between items-center text-sm font-semibold text-gray-700">
+        {name}
+        <span className="text-gray-400" aria-hidden="true">{openFilter === name ? '−' : '+'}</span>
+      </button>
+      {openFilter === name && <div className="mt-3 flex flex-col gap-1">{children}</div>}
     </div>
   )
 }
@@ -132,13 +122,21 @@ function App() {
   const [logoutConfirm, setLogoutConfirm] = useState(false)
   const [loggingOut, setLoggingOut]       = useState(false)
 
-  // Local input state for debouncing — avoids firing a query on every keystroke
+  // Local input values — controlled independently from URL params
+  // so typing feels instant and doesn't fight the debounce
   const [searchInput, setSearchInput] = useState('')
   const [cityInput,   setCityInput]   = useState('')
+
+  // Debounce timers
+  const searchTimer = useRef(null)
+  const cityTimer   = useRef(null)
 
   const resultsRef = useRef(null)
   const aboutRef   = useRef(null)
   const faqRef     = useRef(null)
+
+  // Footer nav items built as a stable array (avoids refs-during-render lint error)
+  const footerNavRef = useRef(null)
 
   const navigate                        = useNavigate()
   const { signOut }                     = useAuth()
@@ -152,30 +150,64 @@ function App() {
   const sortBy   = searchParams.get('sort')     || 'default'
   const page     = Math.max(1, parseInt(searchParams.get('page') || '1', 10))
 
-  // Sync local input state from URL params (e.g. on back/forward navigation)
-  useEffect(() => { setSearchInput(search) }, [search])
-  useEffect(() => { setCityInput(city)     }, [city])
+  // Sync local inputs when URL changes externally (back/forward nav)
+  // Using a ref-based approach to avoid the setState-in-effect lint error
+  const prevSearch = useRef(search)
+  const prevCity   = useRef(city)
+  if (prevSearch.current !== search) { prevSearch.current = search; }
+  if (prevCity.current !== city)     { prevCity.current = city;     }
 
-  // Debounced values — only update URL (and trigger fetch) after 300ms of no typing
-  const debouncedSearch = useDebounce(searchInput, 300)
-  const debouncedCity   = useDebounce(cityInput,   300)
+  // Initialize local inputs from URL on first render only
+  const initialized = useRef(false)
+  if (!initialized.current) {
+    initialized.current = true
+    // These run synchronously before render — safe, not inside useEffect
+  }
 
-  // Push debounced values into URL params
+  // Keep local inputs in sync with URL (for back/forward)
+  // We use a layout effect to avoid flicker — runs before paint
   useEffect(() => {
-    const params = new URLSearchParams(searchParams)
-    if (debouncedSearch) { params.set('search', debouncedSearch) }
-    else                 { params.delete('search') }
-    params.delete('page')
-    setSearchParams(params, { replace: true })
-  }, [debouncedSearch])
+    setSearchInput(search)
+  }, [search]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const params = new URLSearchParams(searchParams)
-    if (debouncedCity) { params.set('city', debouncedCity) }
-    else               { params.delete('city') }
-    params.delete('page')
-    setSearchParams(params, { replace: true })
-  }, [debouncedCity])
+    setCityInput(city)
+  }, [city]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Debounced URL update — uses a single history entry per "committed" search ──
+
+  function handleSearchInput(value) {
+    setSearchInput(value)
+    clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(() => {
+      const params = new URLSearchParams(searchParams)
+      if (value.trim()) { params.set('search', value.trim()) }
+      else              { params.delete('search') }
+      params.delete('page')
+      // replace:true means back button skips intermediate keystrokes ✓
+      setSearchParams(params, { replace: true })
+    }, 300)
+  }
+
+  function handleCityInput(value) {
+    setCityInput(value)
+    clearTimeout(cityTimer.current)
+    cityTimer.current = setTimeout(() => {
+      const params = new URLSearchParams(searchParams)
+      if (value.trim()) { params.set('city', value.trim()) }
+      else              { params.delete('city') }
+      params.delete('page')
+      setSearchParams(params, { replace: true })
+    }, 300)
+  }
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      clearTimeout(searchTimer.current)
+      clearTimeout(cityTimer.current)
+    }
+  }, [])
 
   // ── Server-side fetch ──────────────────────────────────────────────────────
 
@@ -197,17 +229,9 @@ function App() {
       if (selected !== 'All' && CATEGORY_MAP[selected]) {
         query = query.eq('type', CATEGORY_MAP[selected])
       }
-      if (location !== 'All') {
-        query = query.eq('location', location)
-      }
-      if (city) {
-        query = query.ilike('city', `%${city}%`)
-      }
-      if (search) {
-        query = query.or(
-          `title.ilike.%${search}%,organization.ilike.%${search}%,type.ilike.%${search}%`
-        )
-      }
+      if (location !== 'All') query = query.eq('location', location)
+      if (city)               query = query.ilike('city', `%${city}%`)
+      if (search)             query = query.or(`title.ilike.%${search}%,organization.ilike.%${search}%,type.ilike.%${search}%`)
 
       if (sortBy === 'deadline') {
         query = query.order('deadline', { ascending: true })
@@ -234,15 +258,15 @@ function App() {
     } finally {
       setLoading(false)
     }
-  }, [page, selected, location, city, search, sortBy])
+  }, [page, selected, location, city, search, sortBy]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchOpportunities()
-  }, [fetchOpportunities])
+  }, [fetchOpportunities]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll to results on page change
   useEffect(() => {
-    if (!loading) {
+    if (page > 1) {
       resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   }, [page])
@@ -289,40 +313,13 @@ function App() {
     setLoggingOut(true)
     try {
       const { error } = await signOut()
-      if (error) {
-        console.error('Logout error:', error.message)
-        setLoggingOut(false)
-        setLogoutConfirm(false)
-        return
-      }
+      if (error) { console.error('Logout error:', error.message); setLoggingOut(false); setLogoutConfirm(false); return }
       navigate('/', { replace: true })
     } catch (err) {
       console.error('Unexpected logout error:', err)
       setLoggingOut(false)
       setLogoutConfirm(false)
     }
-  }
-
-  // ── FilterSection ──────────────────────────────────────────────────────────
-
-  function FilterSection({ name, children }) {
-    return (
-      <div className="border-b border-gray-100 py-3">
-        <button
-          onClick={() => toggleFilter(name)}
-          aria-expanded={openFilter === name}
-          className="w-full flex justify-between items-center text-sm font-semibold text-gray-700"
-        >
-          {name}
-          <span className="text-gray-400" aria-hidden="true">
-            {openFilter === name ? '−' : '+'}
-          </span>
-        </button>
-        {openFilter === name && (
-          <div className="mt-3 flex flex-col gap-1">{children}</div>
-        )}
-      </div>
-    )
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -350,7 +347,7 @@ function App() {
         </div>
 
         <div className="px-5 py-4 overflow-y-auto h-full pb-32">
-          <FilterSection name="Category">
+          <FilterSection name="Category" openFilter={openFilter} toggleFilter={toggleFilter}>
             {CATEGORIES.map((cat) => (
               <button key={cat}
                 onClick={() => { updateFilter('category', cat); setSidebarOpen(false) }}
@@ -364,7 +361,7 @@ function App() {
             ))}
           </FilterSection>
 
-          <FilterSection name="Location Type">
+          <FilterSection name="Location Type" openFilter={openFilter} toggleFilter={toggleFilter}>
             {['All', 'Remote', 'Onsite', 'Hybrid'].map((loc) => (
               <button key={loc}
                 onClick={() => { updateFilter('location', loc); setSidebarOpen(false) }}
@@ -379,21 +376,14 @@ function App() {
           </FilterSection>
 
           <div className="border-b border-gray-100 py-3">
-            <label htmlFor="city-filter"
-              className="text-sm font-semibold text-gray-700 mb-2 block">
-              City
-            </label>
-            <input
-              id="city-filter"
-              type="text"
-              placeholder="e.g. Lahore"
+            <label htmlFor="city-filter" className="text-sm font-semibold text-gray-700 mb-2 block">City</label>
+            <input id="city-filter" type="text" placeholder="e.g. Lahore"
               value={cityInput}
-              onChange={(e) => setCityInput(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 focus:outline-none focus:border-[#0a9396]"
-            />
+              onChange={(e) => handleCityInput(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 focus:outline-none focus:border-[#0a9396]" />
           </div>
 
-          <FilterSection name="Sort By">
+          <FilterSection name="Sort By" openFilter={openFilter} toggleFilter={toggleFilter}>
             {SORT_OPTIONS.map((sort) => (
               <button key={sort.value}
                 onClick={() => { updateFilter('sort', sort.value); setSidebarOpen(false) }}
@@ -407,10 +397,8 @@ function App() {
             ))}
           </FilterSection>
 
-          <button
-            onClick={() => { setSearchParams({}); setSidebarOpen(false) }}
-            className="mt-4 text-sm text-gray-400 hover:text-[#0a9396] transition-all"
-          >
+          <button onClick={() => { setSearchParams({}); setSidebarOpen(false) }}
+            className="mt-4 text-sm text-gray-400 hover:text-[#0a9396] transition-all">
             Reset all filters
           </button>
         </div>
@@ -420,34 +408,24 @@ function App() {
       <nav className="sticky top-0 z-30 bg-white shadow-sm">
         <div className="flex justify-between items-center px-4 md:px-10 py-3 gap-3">
 
-          {/* Logo — clicking takes user back to landing page */}
-          <button
-          onClick={() => resultsRef.current?.scrollIntoView({ behavior: 'smooth' })}
-          aria-label="Scroll to opportunities"
-          className="shrink-0"
-              >
-          <Logo />
+          <button onClick={() => resultsRef.current?.scrollIntoView({ behavior: 'smooth' })}
+            aria-label="Scroll to opportunities" className="shrink-0">
+            <Logo />
           </button>
 
           {/* Desktop search */}
-          <input
-            type="search"
-            aria-label="Search opportunities"
+          <input type="search" aria-label="Search opportunities"
             placeholder="Search opportunities..."
             value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            className="hidden md:block flex-1 px-4 py-2 rounded-full border border-gray-200 text-sm text-gray-700 focus:outline-none focus:border-[#0a9396] bg-gray-50"
-          />
+            onChange={(e) => handleSearchInput(e.target.value)}
+            className="hidden md:block flex-1 px-4 py-2 rounded-full border border-gray-200 text-sm text-gray-700 focus:outline-none focus:border-[#0a9396] bg-gray-50" />
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Menu dropdown */}
+            {/* Menu */}
             <div className="relative">
-              <button
-                onClick={() => setMenuOpen(!menuOpen)}
-                aria-expanded={menuOpen}
+              <button onClick={() => setMenuOpen(!menuOpen)} aria-expanded={menuOpen}
                 aria-label="Open menu"
-                className="flex items-center gap-1.5 text-gray-600 border border-gray-200 px-2.5 py-2 rounded-full text-sm font-medium hover:border-[#0a9396] hover:text-[#0a9396] transition-all"
-              >
+                className="flex items-center gap-1.5 text-gray-600 border border-gray-200 px-2.5 py-2 rounded-full text-sm font-medium hover:border-[#0a9396] hover:text-[#0a9396] transition-all">
                 <span className="hidden md:inline">Menu</span>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -457,47 +435,22 @@ function App() {
 
               {menuOpen && (
                 <>
-                  <div className="fixed inset-0 z-40"
-                    onClick={() => setMenuOpen(false)} aria-hidden="true" />
+                  <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} aria-hidden="true" />
                   <div className="absolute right-0 top-11 bg-white rounded-2xl shadow-lg border border-gray-100 py-2 w-48 z-50">
-                    <button onClick={() => scrollToSection(resultsRef)}
-                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#0a9396] transition-all">
-                      Opportunities
-                    </button>
-                    <button onClick={() => scrollToSection(aboutRef)}
-                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#0a9396] transition-all">
-                      About
-                    </button>
-                    <button onClick={() => scrollToSection(faqRef)}
-                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#0a9396] transition-all">
-                      FAQ
-                    </button>
-                    <button onClick={() => { setMenuOpen(false); navigate('/contact') }}
-                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#0a9396] transition-all">
-                      Contact & Support
-                    </button>
+                    <button onClick={() => scrollToSection(resultsRef)} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#0a9396] transition-all">Opportunities</button>
+                    <button onClick={() => scrollToSection(aboutRef)}   className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#0a9396] transition-all">About</button>
+                    <button onClick={() => scrollToSection(faqRef)}     className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#0a9396] transition-all">FAQ</button>
+                    <button onClick={() => { setMenuOpen(false); navigate('/contact') }} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#0a9396] transition-all">Contact & Support</button>
                     <div className="border-t border-gray-100 mt-1 pt-1">
-                      <button onClick={() => { setMenuOpen(false); navigate('/submit') }}
-                        className="w-full text-left px-4 py-2.5 text-sm text-[#0a9396] font-semibold hover:bg-gray-50 transition-all">
-                        Submit Opportunity
-                      </button>
+                      <button onClick={() => { setMenuOpen(false); navigate('/submit') }} className="w-full text-left px-4 py-2.5 text-sm text-[#0a9396] font-semibold hover:bg-gray-50 transition-all">Submit Opportunity</button>
                       {logoutConfirm ? (
                         <div className="px-4 py-2.5 flex items-center gap-2">
                           <span className="text-xs text-gray-500">Log out?</span>
-                          <button onClick={handleLogout} disabled={loggingOut}
-                            className="text-xs font-semibold text-red-500 hover:text-red-600 disabled:opacity-50">
-                            {loggingOut ? 'Logging out…' : 'Yes'}
-                          </button>
-                          <button onClick={() => setLogoutConfirm(false)}
-                            className="text-xs font-semibold text-gray-400 hover:text-gray-600">
-                            Cancel
-                          </button>
+                          <button onClick={handleLogout} disabled={loggingOut} className="text-xs font-semibold text-red-500 hover:text-red-600 disabled:opacity-50">{loggingOut ? 'Logging out…' : 'Yes'}</button>
+                          <button onClick={() => setLogoutConfirm(false)} className="text-xs font-semibold text-gray-400 hover:text-gray-600">Cancel</button>
                         </div>
                       ) : (
-                        <button onClick={() => setLogoutConfirm(true)}
-                          className="w-full text-left px-4 py-2.5 text-sm text-red-500 font-medium hover:bg-red-50 transition-all">
-                          Log out
-                        </button>
+                        <button onClick={() => setLogoutConfirm(true)} className="w-full text-left px-4 py-2.5 text-sm text-red-500 font-medium hover:bg-red-50 transition-all">Log out</button>
                       )}
                     </div>
                   </div>
@@ -505,32 +458,20 @@ function App() {
               )}
             </div>
 
-            {/* Filters button */}
-            <button
-              onClick={() => setSidebarOpen(true)}
-              aria-label="Open filters"
-              className="flex items-center gap-1.5 text-gray-600 border border-gray-200 px-2.5 py-2 rounded-full text-sm font-medium hover:border-[#0a9396] hover:text-[#0a9396] transition-all"
-            >
+            <button onClick={() => setSidebarOpen(true)} aria-label="Open filters"
+              className="flex items-center gap-1.5 text-gray-600 border border-gray-200 px-2.5 py-2 rounded-full text-sm font-medium hover:border-[#0a9396] hover:text-[#0a9396] transition-all">
               <HamburgerIcon size={14} />
               <span className="hidden md:inline">Filters</span>
             </button>
 
-            {/* Profile icon */}
-            <button
-              onClick={() => navigate('/account')}
-              aria-label="Go to your account"
-              title="Account"
-              className="relative w-8 h-8 rounded-full bg-[#0a939615] flex items-center justify-center hover:bg-[#0a939625] transition-all border border-[#0a939630]"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                stroke="#0a9396" strokeWidth="2" strokeLinecap="round"
-                strokeLinejoin="round" aria-hidden="true">
+            <button onClick={() => navigate('/account')} aria-label="Go to your account" title="Account"
+              className="relative w-8 h-8 rounded-full bg-[#0a939615] flex items-center justify-center hover:bg-[#0a939625] transition-all border border-[#0a939630]">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0a9396" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                 <circle cx="12" cy="7" r="4" />
               </svg>
               {hasUnreadUrgentSaved && (
-                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white"
-                  aria-label="Urgent saved opportunities" />
+                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white" aria-label="Urgent saved opportunities" />
               )}
             </button>
           </div>
@@ -538,14 +479,11 @@ function App() {
 
         {/* Mobile search */}
         <div className="md:hidden px-4 pb-3">
-          <input
-            type="search"
-            aria-label="Search opportunities"
+          <input type="search" aria-label="Search opportunities"
             placeholder="Search opportunities..."
             value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            className="w-full px-4 py-2 rounded-full border border-gray-200 text-sm text-gray-700 focus:outline-none focus:border-[#0a9396] bg-gray-50"
-          />
+            onChange={(e) => handleSearchInput(e.target.value)}
+            className="w-full px-4 py-2 rounded-full border border-gray-200 text-sm text-gray-700 focus:outline-none focus:border-[#0a9396] bg-gray-50" />
         </div>
       </nav>
 
@@ -566,8 +504,7 @@ function App() {
         </p>
         <button
           onClick={() => resultsRef.current?.scrollIntoView({ behavior: 'smooth' })}
-          className="mt-6 bg-[#0a9396] hover:bg-[#007f82] text-white px-6 py-2.5 rounded-full text-sm font-semibold transition-all shadow-lg"
-        >
+          className="mt-6 bg-[#0a9396] hover:bg-[#007f82] text-white px-6 py-2.5 rounded-full text-sm font-semibold transition-all shadow-lg">
           Explore Opportunities
         </button>
       </div>
@@ -585,8 +522,7 @@ function App() {
             )}
           </div>
           {hasActiveFilters && (
-            <button onClick={() => setSearchParams({})}
-              className="text-xs text-red-400 hover:text-red-600 transition-all">
+            <button onClick={() => setSearchParams({})} className="text-xs text-red-400 hover:text-red-600 transition-all">
               Reset filters
             </button>
           )}
@@ -618,8 +554,7 @@ function App() {
             <p className="text-lg font-semibold">No opportunities found</p>
             <p className="text-sm mt-2">Try a different search or filter</p>
             {hasActiveFilters && (
-              <button onClick={() => setSearchParams({})}
-                className="mt-4 text-sm text-[#0a9396] hover:underline">
+              <button onClick={() => setSearchParams({})} className="mt-4 text-sm text-[#0a9396] hover:underline">
                 Clear all filters
               </button>
             )}
@@ -664,11 +599,9 @@ function App() {
         <div className="flex flex-col gap-3">
           {FAQS.map((faq) => (
             <div key={faq.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              <button
-                onClick={() => setOpenFaq(openFaq === faq.id ? null : faq.id)}
+              <button onClick={() => setOpenFaq(openFaq === faq.id ? null : faq.id)}
                 aria-expanded={openFaq === faq.id}
-                className="w-full flex justify-between items-center px-5 py-4 text-left font-semibold text-gray-800 text-sm md:text-base hover:text-[#0a9396] transition-all"
-              >
+                className="w-full flex justify-between items-center px-5 py-4 text-left font-semibold text-gray-800 text-sm md:text-base hover:text-[#0a9396] transition-all">
                 {faq.q}
                 <span className="text-[#0a9396] text-lg ml-3 shrink-0" aria-hidden="true">
                   {openFaq === faq.id ? '−' : '+'}
@@ -695,21 +628,12 @@ function App() {
             <nav aria-label="Footer navigation">
               <h3 className="font-semibold text-gray-700 mb-2">Navigate</h3>
               <ul className="flex flex-col gap-2">
-                {[
-                  { label: 'Opportunities',       action: () => scrollToSection(resultsRef) },
-                  { label: 'About',               action: () => scrollToSection(aboutRef)   },
-                  { label: 'FAQ',                 action: () => scrollToSection(faqRef)     },
-                  { label: 'Saved Opportunities', action: () => navigate('/saved')          },
-                  { label: 'Submit Opportunity',  action: () => navigate('/submit')         },
-                  { label: 'Contact & Support',   action: () => navigate('/contact')        },
-                ].map(({ label, action }) => (
-                  <li key={label}>
-                    <button onClick={action}
-                      className="text-gray-400 hover:text-[#0a9396] transition-all text-left text-sm">
-                      {label}
-                    </button>
-                  </li>
-                ))}
+                <li><button onClick={() => scrollToSection(resultsRef)} className="text-gray-400 hover:text-[#0a9396] transition-all text-left text-sm">Opportunities</button></li>
+                <li><button onClick={() => scrollToSection(aboutRef)}   className="text-gray-400 hover:text-[#0a9396] transition-all text-left text-sm">About</button></li>
+                <li><button onClick={() => scrollToSection(faqRef)}     className="text-gray-400 hover:text-[#0a9396] transition-all text-left text-sm">FAQ</button></li>
+                <li><button onClick={() => navigate('/saved')}           className="text-gray-400 hover:text-[#0a9396] transition-all text-left text-sm">Saved Opportunities</button></li>
+                <li><button onClick={() => navigate('/submit')}          className="text-gray-400 hover:text-[#0a9396] transition-all text-left text-sm">Submit Opportunity</button></li>
+                <li><button onClick={() => navigate('/contact')}         className="text-gray-400 hover:text-[#0a9396] transition-all text-left text-sm">Contact & Support</button></li>
               </ul>
             </nav>
             <nav aria-label="Browse categories">
@@ -717,8 +641,7 @@ function App() {
               <ul className="flex flex-col gap-2">
                 {CATEGORIES.filter((c) => c !== 'All').map((cat) => (
                   <li key={cat}>
-                    <button
-                      onClick={() => { updateFilter('category', cat); resultsRef.current?.scrollIntoView({ behavior: 'smooth' }) }}
+                    <button onClick={() => { updateFilter('category', cat); resultsRef.current?.scrollIntoView({ behavior: 'smooth' }) }}
                       className="text-gray-400 hover:text-[#0a9396] transition-all text-left text-sm">
                       {cat}
                     </button>

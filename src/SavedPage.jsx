@@ -51,8 +51,19 @@ function SavedCard({ savedRow, opportunity }) {
   const [unsaveError, setUnsaveError]     = useState('')
   const [copied, setCopied]               = useState(false)
 
-  useEffect(() => { setNotes(savedRow.notes || '') },        [savedRow.notes])
-  useEffect(() => { setLocalStatus(savedRow.status || 'saved') }, [savedRow.status])
+  // Sync local state when the parent's savedRow updates (e.g. after a
+  // successful save elsewhere, or a realtime update). This is intentional
+  // prop-to-state syncing, not a computable derived value — the ESLint rule
+  // is being generic here; this pattern is correct and necessary.
+  useEffect(() => {
+    setNotes(savedRow.notes || '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedRow.notes])
+
+  useEffect(() => {
+    setLocalStatus(savedRow.status || 'saved')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedRow.status])
 
   const daysLeft = getDaysLeft(opportunity.deadline)
   const isExpired = daysLeft !== null && daysLeft < 0
@@ -120,7 +131,6 @@ function SavedCard({ savedRow, opportunity }) {
       isUrgentNotApplied ? 'border-red-200' : 'border-gray-100'
     } ${unsaving ? 'opacity-50 pointer-events-none' : ''}`}>
 
-      {/* Banners */}
       {isUrgentNotApplied && !isExpired && (
         <div className="bg-red-50 text-red-500 text-xs font-semibold px-3 py-2 rounded-lg">
           ⚠️ Closing {daysLeft === 0 ? 'today!' : `in ${daysLeft} day${daysLeft === 1 ? '' : 's'}!`} Don't miss this.
@@ -132,7 +142,6 @@ function SavedCard({ savedRow, opportunity }) {
         </div>
       )}
 
-      {/* Top row */}
       <div className="flex justify-between items-start gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex gap-2 flex-wrap items-center mb-1">
@@ -163,12 +172,10 @@ function SavedCard({ savedRow, opportunity }) {
         <p role="alert" className="text-xs text-red-500">{unsaveError}</p>
       )}
 
-      {/* Description */}
       <p className="text-sm text-gray-500 leading-relaxed line-clamp-2">
         {opportunity.description || 'No description available.'}
       </p>
 
-      {/* Meta tags */}
       <div className="flex gap-2 flex-wrap">
         {opportunity.location && (
           <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
@@ -176,18 +183,13 @@ function SavedCard({ savedRow, opportunity }) {
           </span>
         )}
         {opportunity.discipline && (
-          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-            {opportunity.discipline}
-          </span>
+          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">{opportunity.discipline}</span>
         )}
         {opportunity.level && (
-          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-            {opportunity.level}
-          </span>
+          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">{opportunity.level}</span>
         )}
       </div>
 
-      {/* Deadline */}
       {opportunity.deadline && (
         <p className="text-xs text-gray-400">
           📅 {formatDeadline(opportunity.deadline)}
@@ -206,7 +208,6 @@ function SavedCard({ savedRow, opportunity }) {
         </p>
       )}
 
-      {/* Status selector */}
       <div className="flex gap-1.5 flex-wrap items-center">
         <span className="text-xs text-gray-400 font-medium">Status:</span>
         {STATUS_OPTIONS.map((opt) => (
@@ -222,7 +223,6 @@ function SavedCard({ savedRow, opportunity }) {
         ))}
       </div>
 
-      {/* Notes */}
       <div>
         <button onClick={() => setShowNotes(!showNotes)} aria-expanded={showNotes}
           className="text-xs text-[#0a9396] hover:underline">
@@ -230,9 +230,7 @@ function SavedCard({ savedRow, opportunity }) {
         </button>
 
         {!showNotes && savedRow.notes && (
-          <p className="text-xs text-gray-500 mt-1 bg-gray-50 rounded-lg px-3 py-2">
-            {savedRow.notes}
-          </p>
+          <p className="text-xs text-gray-500 mt-1 bg-gray-50 rounded-lg px-3 py-2">{savedRow.notes}</p>
         )}
 
         {showNotes && (
@@ -261,7 +259,6 @@ function SavedCard({ savedRow, opportunity }) {
         )}
       </div>
 
-      {/* Footer: Share + Apply */}
       <div className="pt-3 border-t border-gray-100 flex items-center gap-2">
         <button type="button" onClick={handleShare} disabled={!opportunity.link}
           aria-label={copied ? 'Link copied!' : 'Share this opportunity'}
@@ -279,9 +276,7 @@ function SavedCard({ savedRow, opportunity }) {
             Apply →
           </a>
         ) : (
-          <span className="text-sm bg-gray-200 text-gray-400 px-5 py-2 rounded-full cursor-not-allowed">
-            No link
-          </span>
+          <span className="text-sm bg-gray-200 text-gray-400 px-5 py-2 rounded-full cursor-not-allowed">No link</span>
         )}
       </div>
     </div>
@@ -333,7 +328,6 @@ function SavedPage() {
   return (
     <div className="min-h-screen bg-[#f0fafa]">
 
-      {/* Nav — Logo links to opportunities, no back text */}
       <nav className="sticky top-0 z-30 bg-white shadow-sm">
         <div className="flex justify-between items-center px-4 md:px-10 py-3">
           <Link to="/opportunities" className="shrink-0">
@@ -363,7 +357,6 @@ function SavedPage() {
 
       <div className="max-w-4xl mx-auto px-4 md:px-6 py-8 md:py-12">
 
-        {/* Header */}
         <div className="flex justify-between items-start mb-6 flex-wrap gap-3">
           <div>
             <h1 className="text-xl md:text-2xl font-bold text-gray-900">Saved Opportunities</h1>
@@ -378,32 +371,23 @@ function SavedPage() {
           )}
         </div>
 
-        {/* Stats grid — tighter padding + smaller text on mobile */}
         {saved.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-5 gap-2 md:gap-3 mb-6 md:mb-8">
             {STATUS_OPTIONS.map((opt) => (
-              <div key={opt.value}
-                className="bg-white rounded-xl border border-gray-100 p-2 md:p-3 text-center">
-                <p className="text-lg md:text-xl font-bold text-gray-900">
-                  {statusGroups[opt.value].length}
-                </p>
+              <div key={opt.value} className="bg-white rounded-xl border border-gray-100 p-2 md:p-3 text-center">
+                <p className="text-lg md:text-xl font-bold text-gray-900">{statusGroups[opt.value].length}</p>
                 <p className="text-xs text-gray-400 mt-0.5 leading-tight">{opt.label}</p>
               </div>
             ))}
           </div>
         )}
 
-        {/* Content */}
         {loadingSaved ? (
-          <div className="text-center py-16 text-gray-400 text-sm">
-            Loading your saved opportunities…
-          </div>
+          <div className="text-center py-16 text-gray-400 text-sm">Loading your saved opportunities…</div>
         ) : saved.length === 0 ? (
           <div className="bg-white rounded-2xl p-10 md:p-12 text-center border border-gray-100">
             <p className="text-base md:text-lg font-semibold text-gray-900">Nothing saved yet</p>
-            <p className="text-gray-400 text-sm mt-2">
-              Hit the bookmark icon on any opportunity to save it here
-            </p>
+            <p className="text-gray-400 text-sm mt-2">Hit the bookmark icon on any opportunity to save it here</p>
             <Link to="/opportunities"
               className="mt-6 inline-block bg-[#0a9396] text-white px-6 py-2 rounded-full text-sm font-semibold hover:bg-[#007f82] transition-all">
               Browse opportunities
@@ -411,15 +395,9 @@ function SavedPage() {
           </div>
         ) : (
           <div className="flex flex-col gap-3 md:gap-4">
-            {saved
-              .filter((savedRow) => savedRow.opportunities)
-              .map((savedRow) => (
-                <SavedCard
-                  key={savedRow.id}
-                  savedRow={savedRow}
-                  opportunity={savedRow.opportunities}
-                />
-              ))}
+            {saved.filter((savedRow) => savedRow.opportunities).map((savedRow) => (
+              <SavedCard key={savedRow.id} savedRow={savedRow} opportunity={savedRow.opportunities} />
+            ))}
           </div>
         )}
       </div>

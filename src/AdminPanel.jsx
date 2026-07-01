@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from './supabase'
 import { Link } from 'react-router-dom'
 import Logo from './logo'
@@ -55,7 +55,7 @@ function isFutureOrToday(dateString) {
   return selected >= today
 }
 
-// ─── ConfirmBox ───────────────────────────────────────────────────────────────
+// ─── ConfirmBox — module scope, no render-time recreation ─────────────────────
 
 function ConfirmBox({ message, onConfirm, onCancel, loading, confirmLabel = 'Confirm', danger = true }) {
   return (
@@ -79,7 +79,7 @@ function ConfirmBox({ message, onConfirm, onCancel, loading, confirmLabel = 'Con
   )
 }
 
-// ─── FilterBar ────────────────────────────────────────────────────────────────
+// ─── FilterBar — module scope ──────────────────────────────────────────────────
 
 function FilterBar({ search, onSearch, typeFilter, onType, sortBy, onSort, extraFilters, onExtra }) {
   return (
@@ -114,7 +114,6 @@ function FilterBar({ search, onSearch, typeFilter, onType, sortBy, onSort, extra
           </>
         )}
 
-        {/* Sort — full width on mobile, auto on larger screens */}
         <select value={sortBy} onChange={(e) => onSort(e.target.value)}
           aria-label="Sort opportunities"
           className="w-full sm:w-auto sm:ml-auto px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:border-[#0a9396]">
@@ -124,6 +123,25 @@ function FilterBar({ search, onSearch, typeFilter, onType, sortBy, onSort, extra
           <option value="az">Title A → Z</option>
         </select>
       </div>
+    </div>
+  )
+}
+
+// ─── Pagination — module scope, no longer recreated every render ──────────────
+
+function Pagination({ page, pageCount, onPage }) {
+  if (pageCount <= 1) return null
+  return (
+    <div className="flex items-center justify-center gap-2 mt-6 flex-wrap">
+      <button onClick={() => onPage(page - 1)} disabled={page === 1} aria-label="Previous page"
+        className="px-3 py-2 rounded-full text-sm font-semibold bg-white border border-gray-200 text-gray-500 hover:border-[#0a9396] disabled:opacity-40 transition-all">
+        ← Prev
+      </button>
+      <span className="text-sm text-gray-500 px-2">Page {page} of {pageCount}</span>
+      <button onClick={() => onPage(page + 1)} disabled={page === pageCount} aria-label="Next page"
+        className="px-3 py-2 rounded-full text-sm font-semibold bg-white border border-gray-200 text-gray-500 hover:border-[#0a9396] disabled:opacity-40 transition-all">
+        Next →
+      </button>
     </div>
   )
 }
@@ -169,13 +187,30 @@ function AdminPanel() {
   const [approvedPage, setApprovedPage]     = useState(1)
   const [approvedExtra, setApprovedExtra]   = useState({ featured: false, verified: false, user_submitted: false })
 
-  useEffect(() => { checkAdminSession() }, [])
-  useEffect(() => { setPendingPage(1) },  [pendingSearch, pendingType, pendingSort])
-  useEffect(() => { setApprovedPage(1) }, [approvedSearch, approvedType, approvedSort, approvedExtra])
+  // ── Data ──────────────────────────────────────────────────────────────────
 
-  // ── Auth ──────────────────────────────────────────────────────────────────
+  const fetchAll = useCallback(async () => {
+    setLoading(true)
+    setPanelError('')
+    try {
+      const [pendingRes, approvedRes] = await Promise.all([
+        supabase.from('opportunities').select('*').eq('status', 'pending').order('created_at', { ascending: false }),
+        supabase.from('opportunities').select('*').eq('status', 'approved').order('created_at', { ascending: false }),
+      ])
+      if (pendingRes.error)  console.error('Pending fetch error:', pendingRes.error.message)
+      if (approvedRes.error) console.error('Approved fetch error:', approvedRes.error.message)
+      if (pendingRes.error || approvedRes.error) setPanelError('Could not load admin data. Please refresh.')
+      setPending(pendingRes.data   || [])
+      setApproved(approvedRes.data || [])
+    } catch (err) {
+      console.error('Unexpected fetch error:', err)
+      setPanelError('An unexpected error occurred while loading data.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
-  async function checkAdminSession() {
+  const checkAdminSession = useCallback(async () => {
     setCheckingAuth(true)
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
@@ -190,7 +225,24 @@ function AdminPanel() {
     } finally {
       setCheckingAuth(false)
     }
-  }
+  }, [fetchAll])
+
+  useEffect(() => {
+    checkAdminSession()
+  }, [checkAdminSession])
+
+  // Reset to page 1 whenever filters change — this is a derived-value sync,
+  // not truly a side effect, but React's stricter lint wants it flagged.
+  // Safe pattern: resets pagination state in response to filter state changing.
+  useEffect(() => {
+    setPendingPage(1)
+  }, [pendingSearch, pendingType, pendingSort])
+
+  useEffect(() => {
+    setApprovedPage(1)
+  }, [approvedSearch, approvedType, approvedSort, approvedExtra])
+
+  // ── Auth ──────────────────────────────────────────────────────────────────
 
   async function handleAdminLogin(e) {
     e.preventDefault()
@@ -231,29 +283,6 @@ function AdminPanel() {
       setEditingItem(null)
       setLogoutConfirm(false)
     } catch (err) { console.error('Logout error:', err) }
-  }
-
-  // ── Data ──────────────────────────────────────────────────────────────────
-
-  async function fetchAll() {
-    setLoading(true)
-    setPanelError('')
-    try {
-      const [pendingRes, approvedRes] = await Promise.all([
-        supabase.from('opportunities').select('*').eq('status', 'pending').order('created_at', { ascending: false }),
-        supabase.from('opportunities').select('*').eq('status', 'approved').order('created_at', { ascending: false }),
-      ])
-      if (pendingRes.error)  console.error('Pending fetch error:', pendingRes.error.message)
-      if (approvedRes.error) console.error('Approved fetch error:', approvedRes.error.message)
-      if (pendingRes.error || approvedRes.error) setPanelError('Could not load admin data. Please refresh.')
-      setPending(pendingRes.data   || [])
-      setApproved(approvedRes.data || [])
-    } catch (err) {
-      console.error('Unexpected fetch error:', err)
-      setPanelError('An unexpected error occurred while loading data.')
-    } finally {
-      setLoading(false)
-    }
   }
 
   // ── Filter + sort + paginate ───────────────────────────────────────────────
@@ -441,25 +470,6 @@ function AdminPanel() {
     } finally { setActionLoadingId(null) }
   }
 
-  // ── Pagination component ──────────────────────────────────────────────────
-
-  function Pagination({ page, pageCount, onPage }) {
-    if (pageCount <= 1) return null
-    return (
-      <div className="flex items-center justify-center gap-2 mt-6 flex-wrap">
-        <button onClick={() => onPage(page - 1)} disabled={page === 1} aria-label="Previous page"
-          className="px-3 py-2 rounded-full text-sm font-semibold bg-white border border-gray-200 text-gray-500 hover:border-[#0a9396] disabled:opacity-40 transition-all">
-          ← Prev
-        </button>
-        <span className="text-sm text-gray-500 px-2">Page {page} of {pageCount}</span>
-        <button onClick={() => onPage(page + 1)} disabled={page === pageCount} aria-label="Next page"
-          className="px-3 py-2 rounded-full text-sm font-semibold bg-white border border-gray-200 text-gray-500 hover:border-[#0a9396] disabled:opacity-40 transition-all">
-          Next →
-        </button>
-      </div>
-    )
-  }
-
   // ── Counts & headings ─────────────────────────────────────────────────────
 
   const pendingCount  = pending.length
@@ -516,12 +526,9 @@ function AdminPanel() {
 
   return (
     <div className="min-h-screen bg-[#f0fafa]">
-      {/* Nav */}
       <nav className="bg-white shadow-sm px-4 md:px-10 py-3">
         <div className="flex items-center justify-between max-w-6xl mx-auto">
-          {/* Logo links to opportunities page */}
           <Link to="/opportunities"><Logo /></Link>
-
           <div className="flex items-center gap-3">
             {logoutConfirm ? (
               <div className="flex items-center gap-2">
@@ -530,8 +537,7 @@ function AdminPanel() {
                 <button onClick={() => setLogoutConfirm(false)} className="text-xs font-semibold text-gray-400 hover:text-gray-600">Cancel</button>
               </div>
             ) : (
-              <button onClick={() => setLogoutConfirm(true)}
-                className="text-sm text-red-500 hover:text-red-600 font-medium">
+              <button onClick={() => setLogoutConfirm(true)} className="text-sm text-red-500 hover:text-red-600 font-medium">
                 Logout
               </button>
             )}
@@ -553,7 +559,6 @@ function AdminPanel() {
           </div>
         )}
 
-        {/* Tabs */}
         <div className="flex flex-wrap gap-2 mb-6">
           <button onClick={() => setActiveTab('pending')} aria-pressed={activeTab === 'pending'}
             className={`px-4 py-2 rounded-full text-sm font-semibold transition-all ${
@@ -709,7 +714,6 @@ function AdminPanel() {
                               {o.source_url && <a href={o.source_url} target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:underline">View source →</a>}
                             </div>
                           </div>
-                          {/* Action buttons — flex-row on mobile, flex-col on lg */}
                           <div className="flex flex-row flex-wrap lg:flex-col gap-2 shrink-0 lg:min-w-[170px]">
                             <button onClick={() => openEditModal(o)}
                               className="px-4 py-2 rounded-full text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all">
@@ -777,16 +781,17 @@ function AdminPanel() {
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {[
-                { id: 'edit-title',   label: 'Opportunity Title *', name: 'title',        span: 2 },
-                { id: 'edit-org',     label: 'Organization *',      name: 'organization', span: 1 },
-              ].map(({ id, label, name, span }) => (
-                <div key={name} className={span === 2 ? 'md:col-span-2' : ''}>
-                  <label htmlFor={id} className="text-sm font-semibold text-gray-700 mb-1 block">{label}</label>
-                  <input id={id} name={name} value={editForm[name]} onChange={handleEditChange}
-                    className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:border-[#0a9396]" />
-                </div>
-              ))}
+              <div className="md:col-span-2">
+                <label htmlFor="edit-title" className="text-sm font-semibold text-gray-700 mb-1 block">Opportunity Title *</label>
+                <input id="edit-title" name="title" value={editForm.title} onChange={handleEditChange}
+                  className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:border-[#0a9396]" />
+              </div>
+
+              <div>
+                <label htmlFor="edit-org" className="text-sm font-semibold text-gray-700 mb-1 block">Organization *</label>
+                <input id="edit-org" name="organization" value={editForm.organization} onChange={handleEditChange}
+                  className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:border-[#0a9396]" />
+              </div>
 
               <div>
                 <label htmlFor="edit-type" className="text-sm font-semibold text-gray-700 mb-1 block">Type *</label>

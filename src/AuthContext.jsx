@@ -11,9 +11,8 @@ import { supabase } from './supabase'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-// Must match AuthPage.jsx so UI and context enforce the same floor
 const MIN_PASSWORD_LENGTH = 8
-const MAX_EMAIL_LENGTH    = 254  // RFC 5321 maximum email length
+const MAX_EMAIL_LENGTH    = 254
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
@@ -25,21 +24,12 @@ function normalizeEmail(email = '') {
   return email.trim().toLowerCase()
 }
 
-/**
- * Defense-in-depth email guard.
- * UI validates format , this guards against programmatic misuse.
- */
 function validateEmail(email) {
   if (!email) return 'Email is required.'
   if (email.length > MAX_EMAIL_LENGTH) return 'Email address is too long.'
   return null
 }
 
-/**
- * Defense-in-depth password guard.
- * UI validates length — this ensures the context can never be called
- * with a short password even if the UI check is bypassed.
- */
 function validatePassword(password) {
   if (!password) return 'Password is required.'
   if (password.length < MIN_PASSWORD_LENGTH)
@@ -57,8 +47,6 @@ export function AuthProvider({ children }) {
   const [loading, setLoading]         = useState(true)
   const [initialized, setInitialized] = useState(false)
 
-  // ── Session helpers ────────────────────────────────────────────────────────
-
   const applySession = useCallback((nextSession) => {
     setSession(nextSession ?? null)
     setUser(nextSession?.user ?? null)
@@ -70,10 +58,6 @@ export function AuthProvider({ children }) {
     setInitialized(true)
   }, [])
 
-  /**
-   * Wraps any Supabase auth call, catches unexpected throws,
-   * and always returns { data, error } — never throws to callers.
-   */
   const runAuthAction = useCallback(async (action) => {
     try {
       const result = await action()
@@ -92,8 +76,6 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  // ── Bootstrap ──────────────────────────────────────────────────────────────
-
   useEffect(() => {
     mountedRef.current = true
     let authSubscription = null
@@ -106,11 +88,7 @@ export function AuthProvider({ children }) {
         } = await supabase.auth.getSession()
 
         if (!mountedRef.current) return
-
-        if (error) {
-          console.error('Error getting initial session:', error.message)
-        }
-
+        if (error) console.error('Error getting initial session:', error.message)
         applySession(currentSession)
       } catch (err) {
         if (!mountedRef.current) return
@@ -140,16 +118,11 @@ export function AuthProvider({ children }) {
     }
   }, [applySession, safeFinishInit])
 
-  // ── Auth actions ───────────────────────────────────────────────────────────
-
   const signUp = useCallback(
     async (email, password) => {
       const cleanEmail = normalizeEmail(email)
-
-      // Defense-in-depth validation — guards against programmatic bypass of UI
       const emailErr = validateEmail(cleanEmail)
       if (emailErr) return { data: null, error: { message: emailErr } }
-
       const passErr = validatePassword(password)
       if (passErr) return { data: null, error: { message: passErr } }
 
@@ -157,9 +130,7 @@ export function AuthProvider({ children }) {
         supabase.auth.signUp({
           email: cleanEmail,
           password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/auth`,
-          },
+          options: { emailRedirectTo: `${window.location.origin}/auth` },
         })
       )
     },
@@ -169,17 +140,12 @@ export function AuthProvider({ children }) {
   const signIn = useCallback(
     async (email, password) => {
       const cleanEmail = normalizeEmail(email)
-
       const emailErr = validateEmail(cleanEmail)
       if (emailErr) return { data: null, error: { message: emailErr } }
-
       if (!password) return { data: null, error: { message: 'Password is required.' } }
 
       return runAuthAction(() =>
-        supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password,
-        })
+        supabase.auth.signInWithPassword({ email: cleanEmail, password })
       )
     },
     [runAuthAction]
@@ -192,7 +158,6 @@ export function AuthProvider({ children }) {
   const sendPasswordReset = useCallback(
     async (email) => {
       const cleanEmail = normalizeEmail(email)
-
       const emailErr = validateEmail(cleanEmail)
       if (emailErr) return { data: null, error: { message: emailErr } }
 
@@ -207,20 +172,14 @@ export function AuthProvider({ children }) {
 
   const refreshSession = useCallback(async () => {
     const result = await runAuthAction(() => supabase.auth.refreshSession())
-
     if (result?.data?.session) {
-      // Refresh succeeded — apply the new session
       applySession(result.data.session)
     } else if (result?.error) {
-      // Refresh failed — clear stale session so user doesn't appear logged in
       console.error('Session refresh failed:', result.error.message)
       applySession(null)
     }
-
     return result
   }, [applySession, runAuthAction])
-
-  // ── Context value ──────────────────────────────────────────────────────────
 
   const value = useMemo(
     () => ({
@@ -235,30 +194,20 @@ export function AuthProvider({ children }) {
       sendPasswordReset,
       refreshSession,
     }),
-    [
-      user,
-      session,
-      loading,
-      initialized,
-      signUp,
-      signIn,
-      signOut,
-      sendPasswordReset,
-      refreshSession,
-    ]
+    [user, session, loading, initialized, signUp, signIn, signOut, sendPasswordReset, refreshSession]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
-
+// eslint-disable-next-line react-refresh/only-export-components -- standard
+// Context pattern: the hook must live alongside its Provider. Splitting it into
+// a separate file would only hurt readability with zero real benefit here.
 export function useAuth() {
   const context = useContext(AuthContext)
-
   if (context === undefined) {
     throw new Error('useAuth must be used inside an AuthProvider')
   }
-
   return context
 }
