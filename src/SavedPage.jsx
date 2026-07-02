@@ -57,12 +57,10 @@ function SavedCard({ savedRow, opportunity }) {
   // is being generic here; this pattern is correct and necessary.
   useEffect(() => {
     setNotes(savedRow.notes || '')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedRow.notes])
 
   useEffect(() => {
     setLocalStatus(savedRow.status || 'saved')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedRow.status])
 
   const daysLeft = getDaysLeft(opportunity.deadline)

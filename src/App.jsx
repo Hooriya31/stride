@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useSearchParams, useNavigate, Link } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import OpportunityCard from './OpportunityCard'
 import { supabase } from './supabase'
 import Logo from './logo'
@@ -135,9 +135,6 @@ function App() {
   const aboutRef   = useRef(null)
   const faqRef     = useRef(null)
 
-  // Footer nav items built as a stable array (avoids refs-during-render lint error)
-  const footerNavRef = useRef(null)
-
   const navigate                        = useNavigate()
   const { signOut }                     = useAuth()
   const { hasUnreadUrgentSaved }        = useSaved()
@@ -150,29 +147,15 @@ function App() {
   const sortBy   = searchParams.get('sort')     || 'default'
   const page     = Math.max(1, parseInt(searchParams.get('page') || '1', 10))
 
-  // Sync local inputs when URL changes externally (back/forward nav)
-  // Using a ref-based approach to avoid the setState-in-effect lint error
-  const prevSearch = useRef(search)
-  const prevCity   = useRef(city)
-  if (prevSearch.current !== search) { prevSearch.current = search; }
-  if (prevCity.current !== city)     { prevCity.current = city;     }
-
-  // Initialize local inputs from URL on first render only
-  const initialized = useRef(false)
-  if (!initialized.current) {
-    initialized.current = true
-    // These run synchronously before render — safe, not inside useEffect
-  }
-
-  // Keep local inputs in sync with URL (for back/forward)
-  // We use a layout effect to avoid flicker — runs before paint
+  // Keep local inputs in sync with URL (handles back/forward navigation —
+  // when the URL changes externally, local input state must follow it)
   useEffect(() => {
     setSearchInput(search)
-  }, [search]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [search])
 
   useEffect(() => {
     setCityInput(city)
-  }, [city]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [city])
 
   // ── Debounced URL update — uses a single history entry per "committed" search ──
 
@@ -258,11 +241,11 @@ function App() {
     } finally {
       setLoading(false)
     }
-  }, [page, selected, location, city, search, sortBy]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [page, selected, location, city, search, sortBy])
 
   useEffect(() => {
     fetchOpportunities()
-  }, [fetchOpportunities]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchOpportunities])
 
   // Scroll to results on page change
   useEffect(() => {

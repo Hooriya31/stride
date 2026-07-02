@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useRef } from 'react'
+import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from './supabase'
 import { useAuth } from './AuthContext'
 
@@ -37,55 +37,23 @@ export function SavedProvider({ children }) {
 
   const fetchIdRef = useRef(0)
 
-  // ── Auth-driven fetch ──────────────────────────────────────────────────────
-  // This effect intentionally calls setState — it's syncing local state with
-  // an external system (Supabase auth), which is exactly what useEffect is for.
-  useEffect(() => {
-    if (authLoading) return
-
-    if (!user) {
-      setSaved([])
-      setLoadingSaved(false)
-      setHasUnreadUrgentSaved(false)
-      return
-    }
-
-    fetchSaved()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, authLoading])
-
-  // ── Urgent badge logic ─────────────────────────────────────────────────────
-  // Same rationale — syncing derived "seen" state with localStorage (an
-  // external system), not a pure derived value we could compute inline.
-  useEffect(() => {
-    if (!user) return
-
-    const urgentExists = saved.some(isUrgentNotApplied)
-    const seenKey = `savedUrgentSeen:${user.id}`
-    const seenValue = localStorage.getItem(seenKey)
-
-    if (!urgentExists) {
-      setHasUnreadUrgentSaved(false)
-      localStorage.removeItem(seenKey)
-      return
-    }
-
-    setHasUnreadUrgentSaved(seenValue !== 'true')
-  }, [saved, user])
-
   // ── loadingIds helpers ─────────────────────────────────────────────────────
 
-  function addLoadingId(oppId) {
+  const addLoadingId = useCallback((oppId) => {
     setLoadingIds((prev) => [...prev, oppId])
-  }
+  }, [])
 
-  function removeLoadingId(oppId) {
+  const removeLoadingId = useCallback((oppId) => {
     setLoadingIds((prev) => prev.filter((id) => id !== oppId))
-  }
+  }, [])
 
   // ── Data functions ─────────────────────────────────────────────────────────
+  // All wrapped in useCallback: gives them a stable identity so (a) effects
+  // that depend on them don't need to be suppressed with eslint-disable, and
+  // (b) consumers of SavedContext don't re-render unnecessarily when the
+  // Provider re-renders for unrelated reasons.
 
-  async function fetchSaved() {
+  const fetchSaved = useCallback(async () => {
     if (!user) {
       setSaved([])
       setLoadingSaved(false)
@@ -119,9 +87,9 @@ export function SavedProvider({ children }) {
     } finally {
       if (currentFetchId === fetchIdRef.current) setLoadingSaved(false)
     }
-  }
+  }, [user])
 
-  async function saveOpportunity(oppId) {
+  const saveOpportunity = useCallback(async (oppId) => {
     if (!user) return { error: 'Not logged in' }
     if (saved.some((s) => s.opp_id === oppId)) return { error: null }
 
@@ -146,9 +114,9 @@ export function SavedProvider({ children }) {
     } finally {
       removeLoadingId(oppId)
     }
-  }
+  }, [user, saved, fetchSaved, addLoadingId, removeLoadingId])
 
-  async function unsaveOpportunity(oppId) {
+  const unsaveOpportunity = useCallback(async (oppId) => {
     if (!user) return { error: 'Not logged in' }
 
     const previousSaved = saved
@@ -176,9 +144,9 @@ export function SavedProvider({ children }) {
     } finally {
       removeLoadingId(oppId)
     }
-  }
+  }, [user, saved, addLoadingId, removeLoadingId])
 
-  async function updateSaved(oppId, changes) {
+  const updateSaved = useCallback(async (oppId, changes) => {
     if (!user) return { error: 'Not logged in' }
 
     const previousSaved = saved
@@ -206,25 +174,57 @@ export function SavedProvider({ children }) {
       setSaved(previousSaved)
       return { error: err }
     }
-  }
+  }, [user, saved])
 
-  // ── Helpers exposed to consumers ───────────────────────────────────────────
-
-  function isSaved(oppId) {
+  const isSaved = useCallback((oppId) => {
     return saved.some((s) => s.opp_id === oppId)
-  }
+  }, [saved])
 
-  function getSavedRow(oppId) {
+  const getSavedRow = useCallback((oppId) => {
     return saved.find((s) => s.opp_id === oppId) || null
-  }
+  }, [saved])
 
-  function markUrgentSavedAsSeen() {
+  const markUrgentSavedAsSeen = useCallback(() => {
     if (!user) return
     const urgentExists = saved.some(isUrgentNotApplied)
     if (!urgentExists) return
     localStorage.setItem(`savedUrgentSeen:${user.id}`, 'true')
     setHasUnreadUrgentSaved(false)
-  }
+  }, [user, saved])
+
+  // ── Auth-driven fetch ──────────────────────────────────────────────────────
+  // fetchSaved now has a stable identity (useCallback above), so including it
+  // in the dependency array is correct and safe — no infinite loop, no need
+  // to suppress the ESLint warning.
+  useEffect(() => {
+    if (authLoading) return
+
+    if (!user) {
+      setSaved([])
+      setLoadingSaved(false)
+      setHasUnreadUrgentSaved(false)
+      return
+    }
+
+    fetchSaved()
+  }, [user, authLoading, fetchSaved])
+
+  // ── Urgent badge logic ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!user) return
+
+    const urgentExists = saved.some(isUrgentNotApplied)
+    const seenKey = `savedUrgentSeen:${user.id}`
+    const seenValue = localStorage.getItem(seenKey)
+
+    if (!urgentExists) {
+      setHasUnreadUrgentSaved(false)
+      localStorage.removeItem(seenKey)
+      return
+    }
+
+    setHasUnreadUrgentSaved(seenValue !== 'true')
+  }, [saved, user])
 
   // ── Context value ──────────────────────────────────────────────────────────
 
@@ -250,7 +250,6 @@ export function SavedProvider({ children }) {
   )
 }
 
-// eslint-disable-next-line react-refresh/only-export-components -- standard
 // Context pattern: the hook must live alongside its Provider.
 export function useSaved() {
   const context = useContext(SavedContext)

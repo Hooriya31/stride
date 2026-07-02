@@ -23,5 +23,5 @@ dist-ssr
 *.sln
 *.sw?
 
-#IDs and public Keys
+
 .env

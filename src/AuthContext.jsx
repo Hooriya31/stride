@@ -201,7 +201,6 @@ export function AuthProvider({ children }) {
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
-// eslint-disable-next-line react-refresh/only-export-components -- standard
 // Context pattern: the hook must live alongside its Provider. Splitting it into
 // a separate file would only hurt readability with zero real benefit here.
 export function useAuth() {

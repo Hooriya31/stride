@@ -51,8 +51,15 @@ function ContactPage() {
 
     setStatus('sending')
     try {
-      // ⚠️ Replace YOUR_FORM_ID with your actual Formspree form ID before deploying
-      const res = await fetch('https://formspree.io/f/YOUR_FORM_ID', {
+      const formspreeId = import.meta.env.VITE_FORMSPREE_ID
+
+      if (!formspreeId) {
+        console.error('VITE_FORMSPREE_ID is not set in .env')
+        setStatus('error')
+        return
+      }
+
+      const res = await fetch(`https://formspree.io/f/${formspreeId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ type: form.type, email: trimmedEmail, message: trimmedMessage }),
