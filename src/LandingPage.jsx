@@ -203,7 +203,7 @@ function LandingPage() {
             </h1>
             <p className="text-gray-500 mt-4 md:mt-6 text-sm md:text-base lg:text-lg max-w-xl leading-relaxed">
               Scholarships, internships, fellowships, competitions, hackathons,
-              research and programs.All in one clean platform built specifically
+              research and programs. All in one clean platform built specifically
               for Pakistani students.
             </p>
             <div className="flex flex-wrap gap-3 mt-6 md:mt-8">
@@ -263,7 +263,10 @@ function LandingPage() {
         <div className="text-center mb-8 md:mb-12">
           <h2 className="text-2xl md:text-3xl font-bold text-gray-900">Featured opportunities</h2>
           <p className="text-gray-500 mt-2 md:mt-3 max-w-2xl mx-auto text-sm md:text-base">
-            Real opportunities already live on Stride — curated for Pakistani students.
+            Real opportunities already live on Stride.
+          </p>
+          <p className="text-gray-500 mt-2 md:mt-3 max-w-2xl mx-auto text-sm md:text-base">
+            Curated for Pakistani students.
           </p>
         </div>
 
