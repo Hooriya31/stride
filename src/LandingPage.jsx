@@ -187,7 +187,6 @@ function LandingPage() {
           </div>
         </div>
       </nav>
-
       {/* ── Hero ───────────────────────────────────────────────────────────── */}
       <section className="px-4 md:px-10 pt-12 md:pt-20 pb-12 md:pb-16"
         style={{ background: 'linear-gradient(to bottom, #0a939620, #f0fafa)' }}>
@@ -204,7 +203,7 @@ function LandingPage() {
             </h1>
             <p className="text-gray-500 mt-4 md:mt-6 text-sm md:text-base lg:text-lg max-w-xl leading-relaxed">
               Scholarships, internships, fellowships, competitions, hackathons,
-              research and programs — all in one clean platform built specifically
+              research and programs.All in one clean platform built specifically
               for Pakistani students.
             </p>
             <div className="flex flex-wrap gap-3 mt-6 md:mt-8">
@@ -219,8 +218,8 @@ function LandingPage() {
             </div>
           </div>
 
-          {/* Right: real dynamic preview cards — visible on all sizes, stacks below on mobile */}
-          <div className="relative">
+          {/* Right: real dynamic preview cards ,visible on all sizes, stacks below on mobile */}
+          <div className="relative overflow-hidden">
             <div className="absolute -top-6 -left-6 w-28 h-28 bg-[#0a939615] rounded-full blur-2xl" aria-hidden="true" />
             <div className="absolute -bottom-6 -right-6 w-36 h-36 bg-[#5ec4c620] rounded-full blur-2xl" aria-hidden="true" />
 
@@ -277,7 +276,7 @@ function LandingPage() {
         ) : featuredCards.length === 0 ? (
           <div className="text-center py-10 text-gray-400">
             <p className="font-semibold text-gray-500">No opportunities yet</p>
-            <p className="text-sm mt-1">Check back soon — new ones are added regularly.</p>
+            <p className="text-sm mt-1">Check back soon.</p>
           </div>
         ) : (
           <div className="grid md:grid-cols-3 gap-4 md:gap-6">
@@ -300,7 +299,7 @@ function LandingPage() {
         <div className="max-w-6xl mx-auto text-center">
           <h2 className="text-2xl md:text-3xl font-bold text-white">Why Stride?</h2>
           <p className="text-[#d0f0f0] mt-3 max-w-2xl mx-auto text-sm md:text-base">
-            Most students don't miss opportunities because they lack talent — they miss them
+            Most students don't miss opportunities because they lack talent.They miss them
             because they never hear about them in time.
           </p>
 
