@@ -86,14 +86,30 @@ function AuthPage() {
       if (!cleanEmail) { setError('Please enter your email address.'); return }
       if (!isValidEmail(cleanEmail)) { setError('Please enter a valid email address.'); return }
 
-      if (mode === 'forgot') {
-        const { error: resetError } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
-          redirectTo: `${window.location.origin}/reset-password`,
-        })
-        if (resetError) {
-          setError('Could not send reset email. Please try again.')
+           if (mode === 'signup') {
+        const { data, error: signUpError } = await signUp(cleanEmail, password)
+        if (signUpError) {
+          const msg = signUpError.message?.toLowerCase() || ''
+          if (msg.includes('already registered') || msg.includes('already exists')) {
+            setError('An account with this email already exists. Try signing in instead.')
+          } else if (msg.includes('password')) {
+            setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`)
+          } else {
+            setError('Could not create your account. Please try again.')
+          }
+        } else if (data?.user?.identities?.length === 0) {
+          // Supabase returns no error for an already-confirmed email —
+          // an empty identities array is the only signal this wasn't a real signup.
+          setError('An account with this email already exists. Try signing in instead.')
+          setMode('signin')
         } else {
-          setMessage("If that email is registered, you'll receive a reset link shortly.")
+          if (data?.user && !data?.session) {
+            setMessage('Account created! Please check your email and confirm your account before signing in.')
+          } else {
+            setMessage('Account created successfully. You can now sign in.')
+          }
+          setMode('signin')
+          setPassword('')
         }
         return
       }

@@ -1,7 +1,7 @@
 import { Component } from 'react'
 
 /**
- * ErrorBoundary — catches unexpected React render/lifecycle errors.
+ * ErrorBoundary: catches unexpected React render/lifecycle errors.
  * Without this, any uncaught error shows a blank white screen.
  * Wrap around the entire app in main.jsx.
  */
@@ -33,7 +33,7 @@ class ErrorBoundary extends Component {
             <p className="text-4xl mb-4">⚠️</p>
             <h1 className="text-xl font-bold text-gray-900 mb-2">Something went wrong</h1>
             <p className="text-gray-500 text-sm mb-6">
-              An unexpected error occurred. Try refreshing the page — if the problem
+              An unexpected error occurred. Try refreshing the page, if the problem
               persists, contact us at{' '}
               <a
                 href="mailto:stride.pak@gmail.com"
