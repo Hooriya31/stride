@@ -2,7 +2,7 @@
 
 A free opportunity discovery platform for Pakistani university students. Stride brings scholarships, internships, competitions, hackathons, fellowships, research positions, and programs into one searchable place, so students don't have to hunt across scattered pages and social media posts.
 
-**Live site:** [https://YOUR-LIVE-URL](https://YOUR-LIVE-URL)
+**Live site:** https://stride-pi-five.vercel.app/
 
 ## Features
 
